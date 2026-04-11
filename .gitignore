@@ -1,0 +1,30 @@
+# Compiled binary
+terraform-provider-everflow
+terraform-provider-everflow_v*
+
+# Go build artifacts
+*.exe
+*.test
+*.out
+*.prof
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Release artifacts
+dist/
+
+# Local env
+.envrc
+.env
