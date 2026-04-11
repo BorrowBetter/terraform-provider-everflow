@@ -106,11 +106,11 @@ func (r *AdvertiserResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				},
 			},
 			"time_saved": schema.Int64Attribute{
-				MarkdownDescription: "Unix timestamp (seconds) of the advertiser's last save. Updated by every PUT, including the no-op PUT Terraform issues on Update.",
+				MarkdownDescription: "Unix timestamp (seconds) of the advertiser's last save. Bumped by every PUT the resource issues, so plans that produce an Update will show this as `(known after apply)`.",
 				Computed:            true,
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
-				},
+				// Intentionally no UseStateForUnknown: every Update bumps
+				// time_saved server-side, so the planned value genuinely
+				// is unknown until after apply.
 			},
 			"name": schema.StringAttribute{
 				MarkdownDescription: "Human-readable name of the advertiser. Shown in the Everflow UI and used on tracking links and reports.",
@@ -250,9 +250,16 @@ func (r *AdvertiserResource) Update(ctx context.Context, req resource.UpdateRequ
 }
 
 // Delete performs a soft delete: fetch the raw record, overlay
-// account_status = "inactive", PUT the merged body, and let the framework
-// remove the resource from state. The record persists in Everflow as an
-// inactive advertiser.
+// account_status = "inactive" (and ONLY that field), PUT the merged body,
+// and let the framework remove the resource from state. The record
+// persists in Everflow as an inactive advertiser.
+//
+// Unlike Update, Delete does not reconcile other schema-managed fields
+// back to their state values. If the user made out-of-band changes to,
+// say, `name` before running `terraform destroy`, those edits are
+// preserved — the only field the destroy PUT touches is `account_status`.
+// This mirrors the intent of a destroy operation ("I'm done with this
+// resource, stop touching it") rather than a full rewrite.
 func (r *AdvertiserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state AdvertiserResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -262,11 +269,7 @@ func (r *AdvertiserResource) Delete(ctx context.Context, req resource.DeleteRequ
 
 	id := state.NetworkAdvertiserID.ValueInt64()
 
-	// Overlay the state values but force inactive status. Using state (not
-	// plan) is important because the Delete path has no plan.
-	deactivated := state
-	deactivated.AccountStatus = types.StringValue("inactive")
-	merged, err := r.fetchAndOverlay(ctx, id, deactivated)
+	raw, err := r.client.GetAdvertiserRaw(ctx, id)
 	if err != nil {
 		if everflow.IsNotFound(err) {
 			// Already gone server-side — nothing to deactivate.
@@ -275,8 +278,9 @@ func (r *AdvertiserResource) Delete(ctx context.Context, req resource.DeleteRequ
 		resp.Diagnostics.AddError("Failed to fetch Everflow advertiser for soft-delete", err.Error())
 		return
 	}
+	raw["account_status"] = "inactive"
 
-	if _, err := r.client.UpdateAdvertiser(ctx, id, merged); err != nil {
+	if _, err := r.client.UpdateAdvertiser(ctx, id, raw); err != nil {
 		resp.Diagnostics.AddError("Failed to soft-delete Everflow advertiser", err.Error())
 		return
 	}
@@ -315,15 +319,13 @@ func (r *AdvertiserResource) fetchAndOverlay(ctx context.Context, id int64, plan
 	raw["default_currency_id"] = plan.DefaultCurrencyID.ValueString()
 	raw["reporting_timezone_id"] = plan.ReportingTimezoneID.ValueInt64()
 
-	// Optional field: unset entirely when null, so the PUT doesn't echo a
-	// stale note. Everflow tolerates absent keys; an empty string would be
-	// a semantically different write ("clear the note") than a null plan
-	// ("this field isn't managed by Terraform"), so the distinction matters.
-	if plan.InternalNotes.IsNull() {
-		delete(raw, "internal_notes")
-	} else {
-		raw["internal_notes"] = plan.InternalNotes.ValueString()
-	}
+	// Optional field: write an explicit empty string when the plan is
+	// null. Everflow's PUT is full replacement, so *omitting* the key
+	// from the body would leave a stale value behind on the server; we
+	// need to send "" to actually clear it. Read-side normalization
+	// (writeAdvertiserToModel) maps "" back to null so the null round-
+	// trip is drift-free.
+	raw["internal_notes"] = plan.InternalNotes.ValueString()
 
 	return raw, nil
 }

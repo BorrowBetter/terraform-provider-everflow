@@ -56,7 +56,7 @@ resource "everflow_advertiser" "example" {
 - `network_advertiser_id` (Number) Server-assigned numeric identifier. This is the canonical primary key used by every other Everflow API that references an advertiser.
 - `network_id` (Number) Identifier of the Everflow network this advertiser belongs to. Computed at create time.
 - `time_created` (Number) Unix timestamp (seconds) the advertiser was created.
-- `time_saved` (Number) Unix timestamp (seconds) of the advertiser's last save. Updated by every PUT, including the no-op PUT Terraform issues on Update.
+- `time_saved` (Number) Unix timestamp (seconds) of the advertiser's last save. Bumped by every PUT the resource issues, so plans that produce an Update will show this as `(known after apply)`.
 
 ## Import
 

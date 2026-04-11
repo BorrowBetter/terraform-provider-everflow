@@ -133,18 +133,33 @@ resource "everflow_advertiser" "test" {
 						if state.lastPutBody == nil {
 							return fmt.Errorf("expected a PUT on Update, got none")
 						}
+						// The PUT body must contain the unmodeled
+						// billing object — this is the fetch-modify-put
+						// preservation contract.
 						billing, ok := state.lastPutBody["billing"].(map[string]any)
 						if !ok {
 							return fmt.Errorf("PUT body missing preserved billing object: %v", state.lastPutBody["billing"])
 						}
 						if billing["billing_frequency"] != "monthly" {
-							return fmt.Errorf("billing.billing_frequency = %v, want monthly", billing["billing_frequency"])
+							return fmt.Errorf("PUT body billing.billing_frequency = %v, want monthly", billing["billing_frequency"])
 						}
 						if state.lastPutBody["internal_notes"] != "Managed by Terraform" {
 							return fmt.Errorf("PUT body internal_notes = %v, want 'Managed by Terraform'", state.lastPutBody["internal_notes"])
 						}
 						if state.lastPutBody["name"] != "Acme Renamed" {
 							return fmt.Errorf("PUT body name = %v, want 'Acme Renamed'", state.lastPutBody["name"])
+						}
+						// After the PUT, the fake server's stored copy
+						// of the record must still include the billing
+						// object — this proves the preservation round-
+						// tripped, not just that the resource echoed it
+						// back in one direction.
+						storedBilling, ok := state.record.Extra["billing"].(map[string]any)
+						if !ok {
+							return fmt.Errorf("stored record missing billing after Update: extras=%v", state.record.Extra)
+						}
+						if storedBilling["billing_frequency"] != "monthly" {
+							return fmt.Errorf("stored billing.billing_frequency = %v, want monthly", storedBilling["billing_frequency"])
 						}
 						return nil
 					},
@@ -168,6 +183,71 @@ resource "everflow_advertiser" "test" {
 				return fmt.Errorf("Delete must not issue an HTTP DELETE; Everflow has no DELETE endpoint")
 			}
 			return nil
+		},
+	})
+}
+
+// TestAdvertiserResource_InternalNotesClearOnUnset covers the regression
+// where removing `internal_notes` from HCL previously omitted the key from
+// the PUT body entirely. Because Everflow's PUT is a full replacement,
+// omitting a key does *not* clear the server-side value — the resource
+// must send an explicit empty string on null plans. This test fails if
+// the clear-by-unset path regresses.
+func TestAdvertiserResource_InternalNotesClearOnUnset(t *testing.T) {
+	t.Parallel()
+
+	srv, state := newAdvertiserTestServer(t, &advertiserRecord{
+		ID:                  42,
+		Name:                "Acme",
+		AccountStatus:       "active",
+		NetworkEmployeeID:   11,
+		DefaultCurrencyID:   "USD",
+		ReportingTimezoneID: 80,
+	})
+	defer srv.Close()
+
+	configWith := testProviderConfig(srv) + `
+resource "everflow_advertiser" "test" {
+  name                  = "Acme"
+  account_status        = "active"
+  network_employee_id   = 11
+  default_currency_id   = "USD"
+  reporting_timezone_id = 80
+  internal_notes        = "hello"
+}
+`
+	configWithout := testProviderConfig(srv) + `
+resource "everflow_advertiser" "test" {
+  name                  = "Acme"
+  account_status        = "active"
+  network_employee_id   = 11
+  default_currency_id   = "USD"
+  reporting_timezone_id = 80
+}
+`
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		Steps: []resource.TestStep{
+			{Config: configWith},
+			{
+				Config: configWithout,
+				Check: func(_ *terraform.State) error {
+					state.mu.Lock()
+					defer state.mu.Unlock()
+					v, ok := state.lastPutBody["internal_notes"]
+					if !ok {
+						return fmt.Errorf("PUT body omitted internal_notes; omitting would NOT clear the server value under Everflow's full-replacement PUT")
+					}
+					if v != "" {
+						return fmt.Errorf("PUT body internal_notes = %q, want empty string to clear", v)
+					}
+					if state.record.InternalNotes != "" {
+						return fmt.Errorf("server record internal_notes = %q after unset, want empty", state.record.InternalNotes)
+					}
+					return nil
+				},
+			},
 		},
 	})
 }
@@ -502,20 +582,8 @@ func stringFromMap(m map[string]any, k string) string {
 }
 
 func int64FromMap(m map[string]any, k string) int64 {
-	switch v := m[k].(type) {
-	case float64:
-		return int64(v)
-	case int64:
-		return v
-	case int:
-		return int64(v)
-	case string:
-		// JSON numbers always decode as float64, but tolerate string form
-		// just in case the framework passes int attributes as strings on
-		// the wire (it doesn't, but belt-and-braces).
-		if v == "" {
-			return 0
-		}
-	}
-	return 0
+	// JSON numbers always decode into float64 via encoding/json into a
+	// map[string]any, so that's the only case we need to handle.
+	v, _ := m[k].(float64)
+	return int64(v)
 }
