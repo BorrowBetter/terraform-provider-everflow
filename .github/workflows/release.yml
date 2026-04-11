@@ -34,10 +34,13 @@ jobs:
 
       # OIDC exchange: GitHub mints a short-lived token that AWS exchanges
       # for scoped STS credentials. No static IAM access key lives in GH.
+      # AWS_RELEASE_ROLE_ARN is a non-sensitive identifier, so it is stored
+      # as a GitHub Actions variable rather than a secret. The trust policy
+      # on the role itself is what restricts who can assume it via OIDC.
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v5
         with:
-          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_RELEASE_ROLE_ARN }}
           aws-region: us-east-1
 
       # Pulls the four keys (private, public, passphrase, fingerprint)
