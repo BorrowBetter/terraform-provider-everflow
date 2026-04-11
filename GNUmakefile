@@ -34,8 +34,9 @@ test:
 testacc:
 	TF_ACC=1 go test ./internal/provider -v -race -timeout 120m
 
+TFPLUGINDOCS_VERSION = v0.22.0
 docs:
-	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-name everflow
+	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@$(TFPLUGINDOCS_VERSION) generate --provider-name everflow
 
 lint:
 	go vet ./...
