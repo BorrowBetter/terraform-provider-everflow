@@ -1,0 +1,66 @@
+# Terraform Provider release workflow.
+#
+# Triggered on any tag matching v*, this workflow:
+#   1. Authenticates to AWS via GitHub OIDC (no static credentials)
+#   2. Fetches the GPG signing key from AWS Secrets Manager
+#   3. Imports the key and runs goreleaser to build, sign, and upload
+#      multi-platform archives + SHA256SUMS + detached signature
+#
+# Per the v0.1.0 build spec, the GPG key lives authoritatively in AWS
+# Secrets Manager (borrowbetter/terraform/provider-gpg) and NEVER in
+# GitHub Actions secrets directly.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # OIDC exchange: GitHub mints a short-lived token that AWS exchanges
+      # for scoped STS credentials. No static IAM access key lives in GH.
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # Pulls the four keys (private, public, passphrase, fingerprint)
+      # from the single Secrets Manager secret and surfaces each as an
+      # env var prefixed by the secret name.
+      - name: Fetch GPG key from AWS Secrets Manager
+        uses: aws-actions/aws-secretsmanager-get-secrets@v2
+        with:
+          secret-ids: |
+            GPG,borrowbetter/terraform/provider-gpg
+          parse-json-secrets: true
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ env.GPG_GPG_PRIVATE_KEY }}
+          passphrase: ${{ env.GPG_GPG_PASSPHRASE }}
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ env.GPG_GPG_FINGERPRINT }}
