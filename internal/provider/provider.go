@@ -96,7 +96,9 @@ func (p *EverflowProvider) Configure(ctx context.Context, req provider.Configure
 // Resources returns the list of resource type constructors this provider
 // exposes. New resources are added here.
 func (p *EverflowProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{}
+	return []func() resource.Resource{
+		NewAdvertiserResource,
+	}
 }
 
 // DataSources returns the list of data source type constructors this provider
