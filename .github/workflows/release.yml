@@ -39,10 +39,10 @@ jobs:
 
       # Pinned by commit SHA rather than tag: this step handles the OIDC
       # exchange and is the most security-sensitive action in the workflow.
-      # SHA = tag v4 at time of pinning. Refresh via:
-      #   gh api repos/aws-actions/configure-aws-credentials/git/refs/tags/v4
+      # SHA = tag v6.1.0 at time of pinning (Node 24 runtime). Refresh via:
+      #   gh api repos/aws-actions/configure-aws-credentials/git/refs/tags/v6.1.0
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
         with:
           role-to-assume: ${{ vars.AWS_RELEASE_ROLE_ARN }}
           aws-region: us-east-1
@@ -81,7 +81,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Run goreleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean
