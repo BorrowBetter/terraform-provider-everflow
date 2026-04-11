@@ -1,14 +1,19 @@
 # Terraform Provider release workflow.
 #
-# Triggered on any tag matching v*, this workflow:
+# Triggered on tags matching v*, this workflow:
 #   1. Authenticates to AWS via GitHub OIDC (no static credentials)
 #   2. Fetches the GPG signing key from AWS Secrets Manager
 #   3. Imports the key and runs goreleaser to build, sign, and upload
 #      multi-platform archives + SHA256SUMS + detached signature
 #
-# Per the v0.1.0 build spec, the GPG key lives authoritatively in AWS
-# Secrets Manager (borrowbetter/terraform/provider-gpg) and NEVER in
-# GitHub Actions secrets directly.
+# The GPG key lives authoritatively in AWS Secrets Manager
+# (borrowbetter/terraform/provider-gpg) and NEVER in GitHub Actions
+# secrets. The only GH state is the AWS_RELEASE_ROLE_ARN *variable*.
+#
+# OIDC trust scope: the AWS role's trust policy pins the subject to
+# repo:BorrowBetter/terraform-provider-everflow:ref:refs/tags/v*, so
+# even if this workflow file were modified to run on push/pull_request
+# the STS AssumeRoleWithWebIdentity call would fail.
 
 name: Release
 
@@ -18,8 +23,8 @@ on:
       - "v*"
 
 permissions:
-  contents: write
-  id-token: write
+  contents: write # goreleaser uploads artifacts to the GitHub release
+  id-token: write # mandatory for the OIDC token request
 
 jobs:
   goreleaser:
@@ -32,32 +37,48 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # OIDC exchange: GitHub mints a short-lived token that AWS exchanges
-      # for scoped STS credentials. No static IAM access key lives in GH.
-      # AWS_RELEASE_ROLE_ARN is a non-sensitive identifier, so it is stored
-      # as a GitHub Actions variable rather than a secret. The trust policy
-      # on the role itself is what restricts who can assume it via OIDC.
+      # Pinned by commit SHA rather than tag: this step handles the OIDC
+      # exchange and is the most security-sensitive action in the workflow.
+      # SHA = tag v4 at time of pinning. Refresh via:
+      #   gh api repos/aws-actions/configure-aws-credentials/git/refs/tags/v4
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ vars.AWS_RELEASE_ROLE_ARN }}
           aws-region: us-east-1
+          role-session-name: gha-everflow-provider-release-${{ github.run_id }}
 
-      # Pulls the four keys (private, public, passphrase, fingerprint)
-      # from the single Secrets Manager secret and surfaces each as an
-      # env var prefixed by the secret name.
-      - name: Fetch GPG key from AWS Secrets Manager
-        uses: aws-actions/aws-secretsmanager-get-secrets@v2
-        with:
-          secret-ids: |
-            GPG,borrowbetter/terraform/provider-gpg
-          parse-json-secrets: true
+      # Fetch the GPG bundle directly from Secrets Manager via the AWS CLI
+      # (pre-installed on GitHub-hosted runners). Each field is masked in
+      # the job log before being exported via $GITHUB_ENV so downstream
+      # steps (and goreleaser) can reference them as $GPG_FINGERPRINT and
+      # $GPG_PASSPHRASE without the values ever appearing in logs.
+      - name: Fetch and import GPG signing key
+        run: |
+          set -euo pipefail
+          secret=$(aws secretsmanager get-secret-value \
+            --secret-id borrowbetter/terraform/provider-gpg \
+            --query SecretString --output text)
 
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ env.GPG_GPG_PRIVATE_KEY }}
-          passphrase: ${{ env.GPG_GPG_PASSPHRASE }}
+          fingerprint=$(printf '%s' "$secret" | jq -r .gpg_fingerprint)
+          passphrase=$(printf '%s' "$secret" | jq -r .gpg_passphrase)
+
+          echo "::add-mask::$fingerprint"
+          echo "::add-mask::$passphrase"
+
+          printf '%s' "$secret" | jq -r .gpg_private_key | gpg --batch --import
+
+          # Sanity check: the imported secret key must match the
+          # advertised fingerprint. Fail fast if not.
+          if ! gpg --batch --list-secret-keys --with-colons "$fingerprint" >/dev/null 2>&1; then
+            echo "::error::GPG import succeeded but fingerprint $fingerprint is not present in the keyring"
+            exit 1
+          fi
+
+          {
+            echo "GPG_FINGERPRINT=$fingerprint"
+            echo "GPG_PASSPHRASE=$passphrase"
+          } >> "$GITHUB_ENV"
 
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6
@@ -66,4 +87,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ env.GPG_GPG_FINGERPRINT }}
+          GPG_FINGERPRINT: ${{ env.GPG_FINGERPRINT }}
+          GPG_PASSPHRASE: ${{ env.GPG_PASSPHRASE }}

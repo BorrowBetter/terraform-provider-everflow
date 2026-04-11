@@ -50,8 +50,16 @@ checksum:
 signs:
   - artifacts: checksum
     args:
-      # --batch is required when running non-interactively under GH Actions
+      # --batch is required when running non-interactively under GH Actions.
+      # --pinentry-mode loopback + --passphrase lets the non-interactive
+      # gpg invocation consume the key's passphrase from the env var the
+      # release workflow exports from AWS Secrets Manager, avoiding any
+      # need for gpg-agent preset-passphrase gymnastics.
       - "--batch"
+      - "--pinentry-mode"
+      - "loopback"
+      - "--passphrase"
+      - "{{ .Env.GPG_PASSPHRASE }}"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
