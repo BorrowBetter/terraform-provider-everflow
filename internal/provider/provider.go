@@ -98,6 +98,7 @@ func (p *EverflowProvider) Configure(ctx context.Context, req provider.Configure
 func (p *EverflowProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewAdvertiserResource,
+		NewAffiliateResource,
 	}
 }
 

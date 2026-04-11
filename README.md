@@ -127,10 +127,10 @@ v0.1.0 target resources:
 Shipped:
 
 - `everflow_advertiser` — `/v1/networks/advertisers`
+- `everflow_affiliate` — `/v1/networks/affiliates`
 
 Planned (not yet implemented):
 
-- `everflow_affiliate` — `/v1/networks/affiliates`
 - `everflow_offer` — `/v1/networks/offers`
 
 Explicitly out of scope for v0.1.0 (planned for future releases):
