@@ -73,7 +73,10 @@ func TestSetAffiliateOfferVisibility_PatchesExpectedBody(t *testing.T) {
 		gotPath = r.URL.Path
 		raw, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(raw, &gotBody)
-		w.WriteHeader(http.StatusNoContent)
+		// Return 200 with empty body rather than 204 so the HTTP
+		// client fully drains the connection before srv.Close().
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 
@@ -108,7 +111,8 @@ func TestSetAffiliateOfferVisibility_Hidden(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(raw, &gotBody)
-		w.WriteHeader(http.StatusNoContent)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 
