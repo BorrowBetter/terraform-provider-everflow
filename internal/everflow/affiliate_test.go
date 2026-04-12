@@ -49,10 +49,10 @@ func TestCreateAffiliate_PostsExpectedBody(t *testing.T) {
 		NetworkEmployeeID: 11,
 		DefaultCurrencyID: "USD",
 		InternalNotes:     "hello",
-		Billing: AffiliateBilling{
+		Billing: Billing{
 			BillingFrequency: "monthly",
 			PaymentType:      "none",
-			Details:          AffiliateBillingDetails{DayOfMonth: 1},
+			Details:          BillingDetails{DayOfMonth: 1},
 		},
 	})
 	if err != nil {
@@ -131,10 +131,10 @@ func TestCreateAffiliate_OmitsInternalNotesWhenEmpty(t *testing.T) {
 		AccountStatus:     "active",
 		NetworkEmployeeID: 1,
 		DefaultCurrencyID: "USD",
-		Billing: AffiliateBilling{
+		Billing: Billing{
 			BillingFrequency: "monthly",
 			PaymentType:      "none",
-			Details:          AffiliateBillingDetails{DayOfMonth: 1},
+			Details:          BillingDetails{DayOfMonth: 1},
 		},
 	})
 	if err != nil {

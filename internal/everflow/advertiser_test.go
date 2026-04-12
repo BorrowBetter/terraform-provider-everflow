@@ -51,6 +51,11 @@ func TestCreateAdvertiser_PostsExpectedBody(t *testing.T) {
 		DefaultCurrencyID:   "USD",
 		ReportingTimezoneID: 80,
 		InternalNotes:       "hello",
+		Billing: Billing{
+			BillingFrequency: "monthly",
+			PaymentType:      "none",
+			Details:          BillingDetails{DayOfMonth: 1},
+		},
 	})
 	if err != nil {
 		t.Fatalf("CreateAdvertiser returned error: %v", err)
@@ -80,6 +85,18 @@ func TestCreateAdvertiser_PostsExpectedBody(t *testing.T) {
 	if gotBody["internal_notes"] != "hello" {
 		t.Errorf("body.internal_notes = %v, want hello", gotBody["internal_notes"])
 	}
+	// Billing block must be present in the POST body — this is the fix
+	// for the advertiser billing gap (same class of bug as affiliate #13).
+	billing, ok := gotBody["billing"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.billing missing or not an object: %v", gotBody["billing"])
+	}
+	if billing["billing_frequency"] != "monthly" {
+		t.Errorf("body.billing.billing_frequency = %v, want monthly", billing["billing_frequency"])
+	}
+	if billing["payment_type"] != "none" {
+		t.Errorf("body.billing.payment_type = %v, want none", billing["payment_type"])
+	}
 
 	if got.NetworkAdvertiserID != 42 {
 		t.Errorf("resp.NetworkAdvertiserID = %d, want 42", got.NetworkAdvertiserID)
@@ -108,6 +125,7 @@ func TestCreateAdvertiser_OmitsInternalNotesWhenEmpty(t *testing.T) {
 		NetworkEmployeeID:   1,
 		DefaultCurrencyID:   "USD",
 		ReportingTimezoneID: 80,
+		Billing:             DefaultBilling(),
 	})
 	if err != nil {
 		t.Fatalf("CreateAdvertiser returned error: %v", err)
@@ -307,7 +325,7 @@ func TestAdvertiser_BadRequestDecodesAPIError(t *testing.T) {
 	defer srv.Close()
 
 	c := New("k", srv.URL, "test")
-	_, err := c.CreateAdvertiser(context.Background(), CreateAdvertiserInput{Name: "x"})
+	_, err := c.CreateAdvertiser(context.Background(), CreateAdvertiserInput{Name: "x", Billing: DefaultBilling()})
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}

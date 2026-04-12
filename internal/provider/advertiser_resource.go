@@ -178,6 +178,7 @@ func (r *AdvertiserResource) Create(ctx context.Context, req resource.CreateRequ
 		DefaultCurrencyID:   plan.DefaultCurrencyID.ValueString(),
 		ReportingTimezoneID: plan.ReportingTimezoneID.ValueInt64(),
 		InternalNotes:       plan.InternalNotes.ValueString(),
+		Billing:             everflow.DefaultBilling(),
 	}
 
 	created, err := r.client.CreateAdvertiser(ctx, input)

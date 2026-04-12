@@ -40,14 +40,16 @@ type Advertiser struct {
 // CreateAdvertiserInput is the request body sent to POST
 // /v1/networks/advertisers. It is a strict subset of Advertiser — only the
 // fields the Create endpoint actually accepts, and none of the server-
-// assigned ones.
+// assigned ones. The Billing field is required by the API but write-only
+// (not returned on GET), so callers should use DefaultBilling().
 type CreateAdvertiserInput struct {
-	Name                string `json:"name"`
-	AccountStatus       string `json:"account_status"`
-	NetworkEmployeeID   int64  `json:"network_employee_id"`
-	DefaultCurrencyID   string `json:"default_currency_id"`
-	ReportingTimezoneID int64  `json:"reporting_timezone_id"`
-	InternalNotes       string `json:"internal_notes,omitempty"`
+	Name                string  `json:"name"`
+	AccountStatus       string  `json:"account_status"`
+	NetworkEmployeeID   int64   `json:"network_employee_id"`
+	DefaultCurrencyID   string  `json:"default_currency_id"`
+	ReportingTimezoneID int64   `json:"reporting_timezone_id"`
+	InternalNotes       string  `json:"internal_notes,omitempty"`
+	Billing             Billing `json:"billing"`
 }
 
 // CreateAdvertiser issues a POST to create a new advertiser and decodes the

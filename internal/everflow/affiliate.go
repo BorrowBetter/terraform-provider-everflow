@@ -14,34 +14,6 @@ import (
 // so callers embed that into the path for single-record operations.
 const affiliatesPath = "/v1/networks/affiliates"
 
-// AffiliateBillingDetails holds the inner "details" block of a billing
-// object.
-type AffiliateBillingDetails struct {
-	DayOfMonth int64 `json:"day_of_month"`
-}
-
-// AffiliateBilling is the billing block Everflow requires on affiliate
-// creation. Billing is write-only: the API accepts it on POST but does
-// NOT return it on GET. Consequently it is not exposed in the Terraform
-// schema — the provider hardcodes sensible defaults matching the
-// Everflow UI (monthly, no payment, day 1).
-type AffiliateBilling struct {
-	BillingFrequency string                  `json:"billing_frequency"`
-	PaymentType      string                  `json:"payment_type"`
-	Details          AffiliateBillingDetails `json:"details"`
-}
-
-// DefaultAffiliateBilling returns the billing block the provider sends
-// on POST when creating an affiliate. Values match Everflow's UI
-// defaults: monthly frequency, no payment method, day-of-month 1.
-func DefaultAffiliateBilling() AffiliateBilling {
-	return AffiliateBilling{
-		BillingFrequency: "monthly",
-		PaymentType:      "none",
-		Details:          AffiliateBillingDetails{DayOfMonth: 1},
-	}
-}
-
 // Affiliate is the subset of Everflow's affiliate resource that the
 // Terraform provider models explicitly. The shape intentionally mirrors the
 // API's JSON keys so round-trips through fetch-modify-put are lossless for
@@ -72,14 +44,14 @@ type Affiliate struct {
 // /v1/networks/affiliates. It is a strict subset of Affiliate — only the
 // fields the Create endpoint actually accepts, and none of the server-
 // assigned ones. The Billing field is required by the API but write-only
-// (not returned on GET), so callers should use DefaultAffiliateBilling().
+// (not returned on GET), so callers should use DefaultBilling().
 type CreateAffiliateInput struct {
-	Name              string           `json:"name"`
-	AccountStatus     string           `json:"account_status"`
-	NetworkEmployeeID int64            `json:"network_employee_id"`
-	DefaultCurrencyID string           `json:"default_currency_id"`
-	InternalNotes     string           `json:"internal_notes,omitempty"`
-	Billing           AffiliateBilling `json:"billing"`
+	Name              string  `json:"name"`
+	AccountStatus     string  `json:"account_status"`
+	NetworkEmployeeID int64   `json:"network_employee_id"`
+	DefaultCurrencyID string  `json:"default_currency_id"`
+	InternalNotes     string  `json:"internal_notes,omitempty"`
+	Billing           Billing `json:"billing"`
 }
 
 // CreateAffiliate issues a POST to create a new affiliate and decodes the

@@ -168,7 +168,7 @@ func (r *AffiliateResource) Create(ctx context.Context, req resource.CreateReque
 		NetworkEmployeeID: plan.NetworkEmployeeID.ValueInt64(),
 		DefaultCurrencyID: plan.DefaultCurrencyID.ValueString(),
 		InternalNotes:     plan.InternalNotes.ValueString(),
-		Billing:           everflow.DefaultAffiliateBilling(),
+		Billing:           everflow.DefaultBilling(),
 	}
 
 	created, err := r.client.CreateAffiliate(ctx, input)
