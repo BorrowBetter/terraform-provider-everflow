@@ -7,7 +7,7 @@ description: |-
   Soft-delete semantics
   Everflow has no DELETE endpoint for offers. terraform destroy instead PUTs offer_status = "deleted" and removes the resource from Terraform state. The record persists in Everflow as a deleted offer. To fully remove a resource from state without marking it deleted server-side, use terraform state rm before terraform destroy.
   Unmodeled fields
-  Everflow's PUT endpoint is a full replacement — any field not included in the request body is reset to defaults. To avoid clobbering nested objects the schema does not expose (e.g. ruleset, traffic_filters, creatives, labels, visibility, category, conversion caps), updates are performed as fetch-modify-put: the existing record is GETed, the schema-managed fields are overlaid, and the merged payload is PUT back. Out-of-band edits to unmodeled fields are preserved across apply cycles.
+  Everflow's PUT endpoint is a full replacement — any field not included in the request body is reset to defaults. To avoid clobbering nested objects the schema does not expose (e.g. ruleset, traffic_filters, creatives, labels, category, conversion caps), updates are performed as fetch-modify-put: the existing record is GETed, the schema-managed fields are overlaid, and the merged payload is PUT back. Out-of-band edits to unmodeled fields are preserved across apply cycles.
   Payout / revenue
   The payout_revenue block is schema-managed: the HCL is the source of truth. At least one entry is required and exactly one must have is_default = true. UI edits to payouts are clobbered on the next apply, same as any other schema-managed attribute.
 ---
@@ -22,7 +22,7 @@ Everflow has no DELETE endpoint for offers. `terraform destroy` instead PUTs `of
 
 ### Unmodeled fields
 
-Everflow's PUT endpoint is a full replacement — any field not included in the request body is reset to defaults. To avoid clobbering nested objects the schema does not expose (e.g. `ruleset`, `traffic_filters`, `creatives`, `labels`, `visibility`, `category`, conversion caps), updates are performed as fetch-modify-put: the existing record is GETed, the schema-managed fields are overlaid, and the merged payload is PUT back. Out-of-band edits to unmodeled fields are preserved across apply cycles.
+Everflow's PUT endpoint is a full replacement — any field not included in the request body is reset to defaults. To avoid clobbering nested objects the schema does not expose (e.g. `ruleset`, `traffic_filters`, `creatives`, `labels`, `category`, conversion caps), updates are performed as fetch-modify-put: the existing record is GETed, the schema-managed fields are overlaid, and the merged payload is PUT back. Out-of-band edits to unmodeled fields are preserved across apply cycles.
 
 ### Payout / revenue
 
@@ -79,6 +79,7 @@ resource "everflow_offer" "example" {
 
 - `internal_notes` (String) Free-form notes visible only to network employees. A good place for Terraform-managed markers (e.g. `Managed by Terraform — do not edit in UI`).
 - `payout_revenue` (Block List) Payout and revenue rules for this offer. At least one entry is required; exactly one must have `is_default = true`. This block is schema-managed — UI edits to payouts are clobbered on the next apply. (see [below for nested schema](#nestedblock--payout_revenue))
+- `visibility` (String) Offer visibility. One of `public` (anyone can run), `require_approval` (affiliates must apply), `private` (hidden unless explicitly whitelisted via `everflow_affiliate_offer_visibility`). Defaults to `public` server-side when omitted on create.
 
 ### Read-Only
 
