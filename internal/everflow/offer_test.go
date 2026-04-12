@@ -79,6 +79,7 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 			IsDefault:     true,
 			IsPrivate:     false,
 		}},
+		OfferCreateDefaults: DefaultOfferCreateDefaults(),
 	})
 	if err != nil {
 		t.Fatalf("CreateOffer returned error: %v", err)
@@ -119,6 +120,21 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 	}
 	if gotBody["internal_notes"] != "hello" {
 		t.Errorf("body.internal_notes = %v, want hello", gotBody["internal_notes"])
+	}
+
+	// OfferCreateDefaults fields must be present in POST body.
+	if gotBody["session_definition"] != "cookie" {
+		t.Errorf("body.session_definition = %v, want cookie", gotBody["session_definition"])
+	}
+	if gotBody["session_duration"].(float64) != 24 {
+		t.Errorf("body.session_duration = %v, want 24", gotBody["session_duration"])
+	}
+	creatives, ok := gotBody["creatives"].([]any)
+	if !ok {
+		t.Fatalf("body.creatives = %T, want []any", gotBody["creatives"])
+	}
+	if len(creatives) != 0 {
+		t.Errorf("body.creatives has %d elements, want 0", len(creatives))
 	}
 
 	// payout_revenue must round-trip as a JSON array with the expected
@@ -185,6 +201,7 @@ func TestCreateOffer_OmitsInternalNotesWhenEmpty(t *testing.T) {
 			RevenueType: "rpa",
 			IsDefault:   true,
 		}},
+		OfferCreateDefaults: DefaultOfferCreateDefaults(),
 	})
 	if err != nil {
 		t.Fatalf("CreateOffer returned error: %v", err)
