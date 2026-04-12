@@ -94,8 +94,8 @@ Required:
 
 - `is_default` (Boolean) Whether this entry is the default payout/revenue for the offer. Exactly one entry must be `true`.
 - `is_private` (Boolean) Whether this entry is private (shown only to affiliates it's explicitly granted to).
-- `payout_type` (String) Payout model. One of `cpc`, `cpa`, `cpm`, `cps`, `cpa_cps`, `prv`.
-- `revenue_type` (String) Revenue model. One of `rpc`, `rpa`, `rpm`, `rps`, `rpa_rps`.
+- `payout_type` (String) Payout model. One of `cpc`, `cpa`, `cpm`, `cps`, `cpa_cps`, `prv`, or `null_value`. Use `null_value` for secondary entries that track revenue-only events without paying out (a common shape for multi-entry offers).
+- `revenue_type` (String) Revenue model. One of `rpc`, `rpa`, `rpm`, `rps`, `rpa_rps`, or `null_value`. Use `null_value` for entries that track payout-only events without revenue, analogous to `payout_type = null_value`.
 
 Optional:
 

@@ -681,6 +681,178 @@ resource "everflow_offer" "test" {
 	})
 }
 
+// TestOfferResource_NestedPayoutRevenueRoundTrip covers the real-world
+// Everflow shape where GET responses nest `payout_revenue` under
+// `relationship.payout_revenue.entries` instead of returning it at the
+// top level. A plain decoder that only looks at the top-level key
+// silently drops the payouts on Read, which breaks `terraform import`
+// against the real API. This test locks in:
+//
+//   - Import hydrates the model from the nested GET shape correctly
+//     (the custom UnmarshalJSON on Offer)
+//   - Update strips `relationship.payout_revenue` before writing the
+//     top-level overlay, so the PUT body carries only one
+//     authoritative payout_revenue shape
+//   - Sibling keys under `relationship` (e.g. labels) still survive
+//     fetch-modify-put untouched
+//   - `payout_type = "null_value"` is accepted by the schema, because
+//     ~75% of real offers have a secondary entry with that value
+func TestOfferResource_NestedPayoutRevenueRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	srv, state := newOfferTestServer(t, &offerRecord{
+		ID:                      77,
+		NetworkID:               1,
+		Name:                    "Nested Offer",
+		NetworkAdvertiserID:     42,
+		DestinationURL:          "https://example.com/landing",
+		OfferStatus:             "active",
+		CurrencyID:              "USD",
+		ConversionMethod:        "server_postback",
+		NetworkTrackingDomainID: 5,
+		PayoutRevenue: []any{
+			map[string]any{
+				"entry_name":         "Base",
+				"payout_type":        "cpa",
+				"payout_percentage":  float64(90),
+				"revenue_type":       "rps",
+				"revenue_percentage": float64(100),
+				"is_default":         true,
+				"is_private":         false,
+			},
+			map[string]any{
+				"entry_name":         "Revenue Received",
+				"payout_type":        "null_value",
+				"revenue_type":       "rps",
+				"revenue_percentage": float64(100),
+				"is_default":         false,
+				"is_private":         true,
+			},
+		},
+		// Sibling under `relationship` that must survive unchanged.
+		Extra: map[string]any{
+			"relationship": map[string]any{
+				"labels": []any{"featured"},
+			},
+		},
+	})
+	state.nestPayoutRevenue = true
+	defer srv.Close()
+
+	cfg := testProviderConfig(srv) + `
+resource "everflow_offer" "test" {
+  name                       = "Nested Offer"
+  network_advertiser_id      = 42
+  destination_url            = "https://example.com/landing"
+  offer_status               = "active"
+  currency_id                = "USD"
+  conversion_method          = "server_postback"
+  network_tracking_domain_id = 5
+
+  payout_revenue {
+    entry_name         = "Base"
+    payout_type        = "cpa"
+    payout_percentage  = 90
+    revenue_type       = "rps"
+    revenue_percentage = 100
+    is_default         = true
+    is_private         = false
+  }
+
+  payout_revenue {
+    entry_name         = "Revenue Received"
+    payout_type        = "null_value"
+    revenue_type       = "rps"
+    revenue_percentage = 100
+    is_default         = false
+    is_private         = true
+  }
+}
+`
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				// Create exercises the custom UnmarshalJSON via the
+				// POST response (the fake server returns the nested
+				// shape when state.nestPayoutRevenue is set), plus
+				// the framework's post-Create refresh via GET.
+				Config: cfg,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.#", "2"),
+					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.1.payout_type", "null_value"),
+				),
+			},
+			{
+				Config: testProviderConfig(srv) + `
+resource "everflow_offer" "test" {
+  name                       = "Nested Offer Renamed"
+  network_advertiser_id      = 42
+  destination_url            = "https://example.com/landing"
+  offer_status               = "active"
+  currency_id                = "USD"
+  conversion_method          = "server_postback"
+  network_tracking_domain_id = 5
+
+  payout_revenue {
+    entry_name         = "Base"
+    payout_type        = "cpa"
+    payout_percentage  = 90
+    revenue_type       = "rps"
+    revenue_percentage = 100
+    is_default         = true
+    is_private         = false
+  }
+
+  payout_revenue {
+    entry_name         = "Revenue Received"
+    payout_type        = "null_value"
+    revenue_type       = "rps"
+    revenue_percentage = 100
+    is_default         = false
+    is_private         = true
+  }
+}
+`,
+				Check: func(_ *terraform.State) error {
+					state.mu.Lock()
+					defer state.mu.Unlock()
+					if state.lastPutBody == nil {
+						return fmt.Errorf("expected a PUT on Update, got none")
+					}
+					// Top-level payout_revenue must be present and
+					// carry both entries, including the null_value one.
+					payouts, ok := state.lastPutBody["payout_revenue"].([]any)
+					if !ok || len(payouts) != 2 {
+						return fmt.Errorf("PUT body payout_revenue = %v, want 2-element array", state.lastPutBody["payout_revenue"])
+					}
+					p1, _ := payouts[1].(map[string]any)
+					if p1["payout_type"] != "null_value" {
+						return fmt.Errorf("PUT body payout_revenue[1].payout_type = %v, want null_value", p1["payout_type"])
+					}
+					// Relationship wrapper must survive, but its
+					// payout_revenue child must be stripped so the PUT
+					// carries only the top-level shape.
+					rel, ok := state.lastPutBody["relationship"].(map[string]any)
+					if !ok {
+						return fmt.Errorf("PUT body missing preserved relationship object: %v", state.lastPutBody["relationship"])
+					}
+					if _, bad := rel["payout_revenue"]; bad {
+						return fmt.Errorf("PUT body relationship.payout_revenue must be stripped, got %v", rel["payout_revenue"])
+					}
+					// Sibling labels under relationship must survive.
+					labels, ok := rel["labels"].([]any)
+					if !ok || len(labels) != 1 || labels[0] != "featured" {
+						return fmt.Errorf("PUT body relationship.labels not preserved: %v", rel["labels"])
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
 // TestOfferResource_RequiresPayoutRevenueBlock verifies that omitting
 // the payout_revenue block entirely fails plan-time validation via
 // listvalidator.IsRequired() — SizeAtLeast alone skips null values, so
@@ -746,6 +918,12 @@ type offerServerState struct {
 	lastPutBody  map[string]any
 	deleteCalled bool
 	force404     bool
+	// nestPayoutRevenue makes the fake server return payout_revenue
+	// nested under `relationship.payout_revenue.entries` on GET,
+	// matching the real Everflow API shape. Used by the regression
+	// test that covers the custom UnmarshalJSON path and the
+	// strip-on-PUT overlay behavior.
+	nestPayoutRevenue bool
 }
 
 // newOfferTestServer spins up a minimal in-memory fake Everflow that
@@ -796,7 +974,7 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 			if pr, ok := body["payout_revenue"].([]any); ok {
 				state.record.PayoutRevenue = pr
 			}
-			writeOfferRecord(w, state.record)
+			writeOfferRecord(w, state.record, state.nestPayoutRevenue)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -815,7 +993,7 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 				_, _ = w.Write([]byte(`{"Error":"not found"}`))
 				return
 			}
-			writeOfferRecord(w, state.record)
+			writeOfferRecord(w, state.record, state.nestPayoutRevenue)
 		case http.MethodPut:
 			var body map[string]any
 			raw, _ := io.ReadAll(r.Body)
@@ -851,7 +1029,7 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 				}
 				state.record.Extra[k] = v
 			}
-			writeOfferRecord(w, state.record)
+			writeOfferRecord(w, state.record, state.nestPayoutRevenue)
 		case http.MethodDelete:
 			state.deleteCalled = true
 			w.WriteHeader(http.StatusNoContent)
@@ -865,8 +1043,10 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 
 // writeOfferRecord serializes the in-memory record back out as JSON in
 // the same shape Everflow's real API uses. Extra fields are merged into
-// the top-level object.
-func writeOfferRecord(w http.ResponseWriter, rec *offerRecord) {
+// the top-level object. When nested is true, payout_revenue is wrapped
+// inside `relationship.payout_revenue.entries` instead of being placed
+// at the top level — matching the real Everflow GET response shape.
+func writeOfferRecord(w http.ResponseWriter, rec *offerRecord, nested bool) {
 	out := map[string]any{
 		"network_offer_id":           rec.ID,
 		"network_id":                 rec.NetworkID,
@@ -879,10 +1059,30 @@ func writeOfferRecord(w http.ResponseWriter, rec *offerRecord) {
 		"network_tracking_domain_id": rec.NetworkTrackingDomainID,
 		"internal_notes":             rec.InternalNotes,
 	}
-	if rec.PayoutRevenue != nil {
+	if nested {
+		// Merge with any pre-existing relationship from Extra so
+		// other unmodeled keys (labels, category, ...) still survive.
+		rel := map[string]any{}
+		if existing, ok := rec.Extra["relationship"].(map[string]any); ok {
+			for k, v := range existing {
+				rel[k] = v
+			}
+		}
+		if rec.PayoutRevenue != nil {
+			rel["payout_revenue"] = map[string]any{
+				"total":   len(rec.PayoutRevenue),
+				"entries": rec.PayoutRevenue,
+			}
+		}
+		out["relationship"] = rel
+	} else if rec.PayoutRevenue != nil {
 		out["payout_revenue"] = rec.PayoutRevenue
 	}
 	for k, v := range rec.Extra {
+		if nested && k == "relationship" {
+			// Already merged into out["relationship"] above.
+			continue
+		}
 		out[k] = v
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -210,10 +210,10 @@ func (r *OfferResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 							Optional:            true,
 						},
 						"payout_type": schema.StringAttribute{
-							MarkdownDescription: "Payout model. One of `cpc`, `cpa`, `cpm`, `cps`, `cpa_cps`, `prv`.",
+							MarkdownDescription: "Payout model. One of `cpc`, `cpa`, `cpm`, `cps`, `cpa_cps`, `prv`, or `null_value`. Use `null_value` for secondary entries that track revenue-only events without paying out (a common shape for multi-entry offers).",
 							Required:            true,
 							Validators: []validator.String{
-								stringvalidator.OneOf("cpc", "cpa", "cpm", "cps", "cpa_cps", "prv"),
+								stringvalidator.OneOf("cpc", "cpa", "cpm", "cps", "cpa_cps", "prv", "null_value"),
 							},
 						},
 						"payout_amount": schema.Float64Attribute{
@@ -225,10 +225,10 @@ func (r *OfferResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 							Optional:            true,
 						},
 						"revenue_type": schema.StringAttribute{
-							MarkdownDescription: "Revenue model. One of `rpc`, `rpa`, `rpm`, `rps`, `rpa_rps`.",
+							MarkdownDescription: "Revenue model. One of `rpc`, `rpa`, `rpm`, `rps`, `rpa_rps`, or `null_value`. Use `null_value` for entries that track payout-only events without revenue, analogous to `payout_type = null_value`.",
 							Required:            true,
 							Validators: []validator.String{
-								stringvalidator.OneOf("rpc", "rpa", "rpm", "rps", "rpa_rps"),
+								stringvalidator.OneOf("rpc", "rpa", "rpm", "rps", "rpa_rps", "null_value"),
 							},
 						},
 						"revenue_amount": schema.Float64Attribute{
@@ -450,6 +450,15 @@ func (r *OfferResource) fetchAndOverlay(ctx context.Context, id int64, plan Offe
 
 	// Overwrite the server's payout_revenue with the planned value. The
 	// block is schema-managed; the user's HCL is the source of truth.
+	//
+	// Everflow's GET response nests the authoritative payout_revenue
+	// array under `relationship.payout_revenue.entries`. We strip that
+	// nested copy before PUT so the server only sees our top-level
+	// overlay — otherwise a PUT body could carry two conflicting shapes
+	// and the server's behavior on which one wins would be undefined.
+	if rel, ok := raw["relationship"].(map[string]any); ok {
+		delete(rel, "payout_revenue")
+	}
 	raw["payout_revenue"] = payoutRevenueModelsToMap(plan.PayoutRevenue)
 
 	return raw, nil
