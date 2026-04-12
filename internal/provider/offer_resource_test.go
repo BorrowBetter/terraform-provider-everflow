@@ -888,6 +888,46 @@ resource "everflow_offer" "test" {
 	})
 }
 
+// TestOfferResource_InvalidVisibility verifies the visibility validator
+// rejects values outside the allowed set at plan time.
+func TestOfferResource_InvalidVisibility(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Errorf("HTTP request reached server despite invalid visibility")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testProviderConfig(srv) + `
+resource "everflow_offer" "test" {
+  name                       = "x"
+  network_advertiser_id      = 42
+  destination_url            = "https://example.com/landing"
+  offer_status               = "active"
+  currency_id                = "USD"
+  conversion_method          = "server_postback"
+  network_tracking_domain_id = 5
+  visibility                 = "bogus"
+
+  payout_revenue {
+    payout_type  = "cpa"
+    revenue_type = "rpa"
+    is_default   = true
+    is_private   = false
+  }
+}
+`,
+				ExpectError: regexp.MustCompile(`(?s)visibility.*one of`),
+			},
+		},
+	})
+}
+
 // offerRecord is the in-memory fake Everflow's view of a single offer.
 // Extra holds any nested objects (ruleset, traffic_filters, creatives,
 // labels, ...) the typed schema does not model so the fake can round-
@@ -900,6 +940,7 @@ type offerRecord struct {
 	NetworkAdvertiserID     int64
 	DestinationURL          string
 	OfferStatus             string
+	Visibility              string
 	CurrencyID              string
 	ConversionMethod        string
 	NetworkTrackingDomainID int64
@@ -967,6 +1008,7 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 			state.record.NetworkAdvertiserID = int64FromMap(body, "network_advertiser_id")
 			state.record.DestinationURL = stringFromMap(body, "destination_url")
 			state.record.OfferStatus = stringFromMap(body, "offer_status")
+			state.record.Visibility = stringFromMap(body, "visibility")
 			state.record.CurrencyID = stringFromMap(body, "currency_id")
 			state.record.ConversionMethod = stringFromMap(body, "conversion_method")
 			state.record.NetworkTrackingDomainID = int64FromMap(body, "network_tracking_domain_id")
@@ -1006,6 +1048,7 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 			state.record.NetworkAdvertiserID = int64FromMap(body, "network_advertiser_id")
 			state.record.DestinationURL = stringFromMap(body, "destination_url")
 			state.record.OfferStatus = stringFromMap(body, "offer_status")
+			state.record.Visibility = stringFromMap(body, "visibility")
 			state.record.CurrencyID = stringFromMap(body, "currency_id")
 			state.record.ConversionMethod = stringFromMap(body, "conversion_method")
 			state.record.NetworkTrackingDomainID = int64FromMap(body, "network_tracking_domain_id")
@@ -1022,9 +1065,10 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 				switch k {
 				case "network_offer_id", "network_id", "name",
 					"network_advertiser_id", "destination_url",
-					"offer_status", "currency_id", "conversion_method",
-					"network_tracking_domain_id", "internal_notes",
-					"payout_revenue", "time_created", "time_saved":
+					"offer_status", "visibility", "currency_id",
+					"conversion_method", "network_tracking_domain_id",
+					"internal_notes", "payout_revenue",
+					"time_created", "time_saved":
 					continue
 				}
 				state.record.Extra[k] = v
@@ -1047,6 +1091,10 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 // inside `relationship.payout_revenue.entries` instead of being placed
 // at the top level — matching the real Everflow GET response shape.
 func writeOfferRecord(w http.ResponseWriter, rec *offerRecord, nested bool) {
+	vis := rec.Visibility
+	if vis == "" {
+		vis = "public" // Server default.
+	}
 	out := map[string]any{
 		"network_offer_id":           rec.ID,
 		"network_id":                 rec.NetworkID,
@@ -1054,6 +1102,7 @@ func writeOfferRecord(w http.ResponseWriter, rec *offerRecord, nested bool) {
 		"network_advertiser_id":      rec.NetworkAdvertiserID,
 		"destination_url":            rec.DestinationURL,
 		"offer_status":               rec.OfferStatus,
+		"visibility":                 vis,
 		"currency_id":                rec.CurrencyID,
 		"conversion_method":          rec.ConversionMethod,
 		"network_tracking_domain_id": rec.NetworkTrackingDomainID,

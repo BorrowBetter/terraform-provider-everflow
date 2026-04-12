@@ -42,7 +42,7 @@ type PayoutRevenueEntry struct {
 // these fields.
 //
 // Fields outside of this struct (ruleset, traffic_filters, creatives,
-// labels, visibility, category, conversion caps, etc.) are preserved by
+// labels, category, conversion caps, etc.) are preserved by
 // the resource's Update method using the raw map variant below — not by
 // adding more typed fields here. This keeps the typed surface small
 // while still respecting Everflow's full-replacement PUT semantics.
@@ -61,6 +61,7 @@ type Offer struct {
 	CurrencyID              string               `json:"currency_id"`
 	ConversionMethod        string               `json:"conversion_method"`
 	NetworkTrackingDomainID int64                `json:"network_tracking_domain_id"`
+	Visibility              string               `json:"visibility,omitempty"`
 	InternalNotes           string               `json:"internal_notes,omitempty"`
 	PayoutRevenue           []PayoutRevenueEntry `json:"payout_revenue,omitempty"`
 	TimeCreated             int64                `json:"time_created,omitempty"`
@@ -116,6 +117,7 @@ type CreateOfferInput struct {
 	CurrencyID              string               `json:"currency_id"`
 	ConversionMethod        string               `json:"conversion_method"`
 	NetworkTrackingDomainID int64                `json:"network_tracking_domain_id"`
+	Visibility              string               `json:"visibility,omitempty"`
 	InternalNotes           string               `json:"internal_notes,omitempty"`
 	PayoutRevenue           []PayoutRevenueEntry `json:"payout_revenue"`
 }

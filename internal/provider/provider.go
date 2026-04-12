@@ -99,6 +99,8 @@ func (p *EverflowProvider) Resources(_ context.Context) []func() resource.Resour
 	return []func() resource.Resource{
 		NewAdvertiserResource,
 		NewAffiliateResource,
+		NewAffiliateOfferVisibilityResource,
+		NewAffiliatePostbackResource,
 		NewOfferResource,
 	}
 }
