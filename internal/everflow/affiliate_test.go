@@ -49,6 +49,11 @@ func TestCreateAffiliate_PostsExpectedBody(t *testing.T) {
 		NetworkEmployeeID: 11,
 		DefaultCurrencyID: "USD",
 		InternalNotes:     "hello",
+		Billing: AffiliateBilling{
+			BillingFrequency: "monthly",
+			PaymentType:      "none",
+			Details:          AffiliateBillingDetails{DayOfMonth: 1},
+		},
 	})
 	if err != nil {
 		t.Fatalf("CreateAffiliate returned error: %v", err)
@@ -80,6 +85,25 @@ func TestCreateAffiliate_PostsExpectedBody(t *testing.T) {
 	if gotBody["internal_notes"] != "hello" {
 		t.Errorf("body.internal_notes = %v, want hello", gotBody["internal_notes"])
 	}
+	// Billing block must be present in the POST body — this is the fix
+	// for #13 (affiliate creation fails without billing).
+	billing, ok := gotBody["billing"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.billing missing or not an object: %v", gotBody["billing"])
+	}
+	if billing["billing_frequency"] != "monthly" {
+		t.Errorf("body.billing.billing_frequency = %v, want monthly", billing["billing_frequency"])
+	}
+	if billing["payment_type"] != "none" {
+		t.Errorf("body.billing.payment_type = %v, want none", billing["payment_type"])
+	}
+	details, ok := billing["details"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.billing.details missing or not an object: %v", billing["details"])
+	}
+	if details["day_of_month"].(float64) != 1 {
+		t.Errorf("body.billing.details.day_of_month = %v, want 1", details["day_of_month"])
+	}
 
 	if got.NetworkAffiliateID != 42 {
 		t.Errorf("resp.NetworkAffiliateID = %d, want 42", got.NetworkAffiliateID)
@@ -107,6 +131,11 @@ func TestCreateAffiliate_OmitsInternalNotesWhenEmpty(t *testing.T) {
 		AccountStatus:     "active",
 		NetworkEmployeeID: 1,
 		DefaultCurrencyID: "USD",
+		Billing: AffiliateBilling{
+			BillingFrequency: "monthly",
+			PaymentType:      "none",
+			Details:          AffiliateBillingDetails{DayOfMonth: 1},
+		},
 	})
 	if err != nil {
 		t.Fatalf("CreateAffiliate returned error: %v", err)
@@ -135,7 +164,12 @@ func TestGetAffiliate_DecodesTypedResponse(t *testing.T) {
 			"account_status": "active",
 			"network_employee_id": 11,
 			"default_currency_id": "USD",
-			"internal_notes": "hello"
+			"internal_notes": "hello",
+			"billing": {
+				"billing_frequency": "monthly",
+				"payment_type": "none",
+				"details": {"day_of_month": 1}
+			}
 		}`))
 	}))
 	defer srv.Close()
@@ -157,6 +191,15 @@ func TestGetAffiliate_DecodesTypedResponse(t *testing.T) {
 	}
 	if got.InternalNotes != "hello" {
 		t.Errorf("InternalNotes = %q, want hello", got.InternalNotes)
+	}
+	if got.Billing.BillingFrequency != "monthly" {
+		t.Errorf("Billing.BillingFrequency = %q, want monthly", got.Billing.BillingFrequency)
+	}
+	if got.Billing.PaymentType != "none" {
+		t.Errorf("Billing.PaymentType = %q, want none", got.Billing.PaymentType)
+	}
+	if got.Billing.Details.DayOfMonth != 1 {
+		t.Errorf("Billing.Details.DayOfMonth = %d, want 1", got.Billing.Details.DayOfMonth)
 	}
 }
 
