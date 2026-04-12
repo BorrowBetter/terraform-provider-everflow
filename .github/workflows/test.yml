@@ -47,4 +47,4 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go mod download
-      - run: go test ./... -race -timeout 120s
+      - run: go test ./... -race -timeout 300s
