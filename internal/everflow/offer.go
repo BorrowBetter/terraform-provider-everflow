@@ -106,10 +106,60 @@ func (o *Offer) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// OfferCreateDefaults holds the POST-required fields that are not part
+// of the Terraform schema. Everflow validates these one at a time, so
+// omitting any of them causes a sequential "field X is required" error.
+// The provider hardcodes sensible defaults (matching live offer id 2)
+// and embeds this struct into CreateOfferInput so the Go JSON encoder
+// flattens the fields into the top-level request body.
+//
+// These fields ARE returned by GET, so fetch-modify-put already handles
+// them on Update/Delete — only Create needs the defaults.
+type OfferCreateDefaults struct {
+	NetworkCategoryID              int64  `json:"network_category_id"`
+	IsViewThroughEnabled           bool   `json:"is_view_through_enabled"`
+	IsUsingExplicitTerms           bool   `json:"is_using_explicit_terms_and_conditions"`
+	IsForceTerms                   bool   `json:"is_force_terms_and_conditions"`
+	IsCapsEnabled                  bool   `json:"is_caps_enabled"`
+	IsUsingSuppressionList         bool   `json:"is_using_suppression_list"`
+	SuppressionListID              int64  `json:"suppression_list_id"`
+	IsDuplicateFilterEnabled       bool   `json:"is_duplicate_filter_enabled"`
+	DuplicateFilterTargetingAction string `json:"duplicate_filter_targeting_action"`
+	IsUseSecureLink                bool   `json:"is_use_secure_link"`
+	IsAllowDeepLink                bool   `json:"is_allow_deep_link"`
+	IsSessionTrackingEnabled       bool   `json:"is_session_tracking_enabled"`
+	SessionDefinition              string `json:"session_definition"`
+	SessionDuration                int64  `json:"session_duration"`
+	IsFailTrafficEnabled           bool   `json:"is_fail_traffic_enabled"`
+	RedirectRoutingMethod          string `json:"redirect_routing_method"`
+	RedirectInternalRoutingType    string `json:"redirect_internal_routing_type"`
+	Creatives                      []any  `json:"creatives"`
+	InternalRedirects              []any  `json:"internal_redirects"`
+}
+
+// DefaultOfferCreateDefaults returns sensible defaults for the POST-
+// required fields. Values are drawn from live offer id 2.
+func DefaultOfferCreateDefaults() OfferCreateDefaults {
+	return OfferCreateDefaults{
+		NetworkCategoryID:              1,
+		IsUseSecureLink:                true,
+		SessionDefinition:              "cookie",
+		SessionDuration:                24,
+		DuplicateFilterTargetingAction: "unknown",
+		RedirectRoutingMethod:          "null_value",
+		RedirectInternalRoutingType:    "null_value",
+		Creatives:                      []any{},
+		InternalRedirects:              []any{},
+	}
+}
+
 // CreateOfferInput is the request body sent to POST /v1/networks/offers.
 // It is a strict subset of Offer — only the fields the Create endpoint
 // actually accepts, and none of the server-assigned ones. PayoutRevenue
 // is NOT tagged omitempty here: the API requires at least one entry.
+//
+// OfferCreateDefaults is embedded so its fields flatten into the JSON
+// body alongside the schema-managed fields.
 type CreateOfferInput struct {
 	Name                    string               `json:"name"`
 	NetworkAdvertiserID     int64                `json:"network_advertiser_id"`
@@ -122,6 +172,7 @@ type CreateOfferInput struct {
 	Visibility              string               `json:"visibility,omitempty"`
 	InternalNotes           string               `json:"internal_notes,omitempty"`
 	PayoutRevenue           []PayoutRevenueEntry `json:"payout_revenue"`
+	OfferCreateDefaults
 }
 
 // CreateOffer issues a POST to create a new offer and decodes the response

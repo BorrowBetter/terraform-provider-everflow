@@ -164,6 +164,15 @@ resource "everflow_offer" "test" {
 						if state.lastPostBody["redirect_mode"] != "standard" {
 							return fmt.Errorf("POST body redirect_mode = %v, want standard", state.lastPostBody["redirect_mode"])
 						}
+						// OfferCreateDefaults must be present in the
+						// POST body — this is the fix for sequential
+						// "field X is required" errors.
+						if state.lastPostBody["session_definition"] != "cookie" {
+							return fmt.Errorf("POST body session_definition = %v, want cookie", state.lastPostBody["session_definition"])
+						}
+						if state.lastPostBody["session_duration"].(float64) != 24 {
+							return fmt.Errorf("POST body session_duration = %v, want 24", state.lastPostBody["session_duration"])
+						}
 						payouts, ok := state.lastPostBody["payout_revenue"].([]any)
 						if !ok || len(payouts) != 1 {
 							return fmt.Errorf("POST body payout_revenue = %v, want 1-element array", state.lastPostBody["payout_revenue"])

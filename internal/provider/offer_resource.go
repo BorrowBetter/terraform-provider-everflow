@@ -322,6 +322,7 @@ func (r *OfferResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Visibility:              plan.Visibility.ValueString(),
 		InternalNotes:           plan.InternalNotes.ValueString(),
 		PayoutRevenue:           payoutRevenueModelsToClient(plan.PayoutRevenue),
+		OfferCreateDefaults:     everflow.DefaultOfferCreateDefaults(),
 	}
 
 	created, err := r.client.CreateOffer(ctx, input)
