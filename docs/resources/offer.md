@@ -102,10 +102,10 @@ Required:
 Optional:
 
 - `entry_name` (String) Human-readable name for this payout/revenue entry. Defaults to `Base` server-side when omitted.
-- `payout_amount` (Number) Fixed payout amount in the offer's `currency_id`. Not required when `payout_type` is `cps` or `prv`.
-- `payout_percentage` (Number) Payout percentage (0-100). Only meaningful when `payout_type` is `cps`, `cpa_cps`, or `prv`.
-- `revenue_amount` (Number) Fixed revenue amount in the offer's `currency_id`. Not required when `revenue_type` is `rps`.
-- `revenue_percentage` (Number) Revenue percentage (0-100). Only meaningful when `revenue_type` is `rps` or `rpa_rps`.
+- `payout_amount` (Number) Fixed payout amount in the offer's `currency_id`. Not required when `payout_type` is `cps` or `prv`. Defaults to `0` server-side when omitted.
+- `payout_percentage` (Number) Payout percentage (0-100). Only meaningful when `payout_type` is `cps`, `cpa_cps`, or `prv`. Defaults to `0` server-side when omitted.
+- `revenue_amount` (Number) Fixed revenue amount in the offer's `currency_id`. Not required when `revenue_type` is `rps`. Defaults to `0` server-side when omitted.
+- `revenue_percentage` (Number) Revenue percentage (0-100). Only meaningful when `revenue_type` is `rps` or `rpa_rps`. Defaults to `0` server-side when omitted.
 
 ## Import
 
