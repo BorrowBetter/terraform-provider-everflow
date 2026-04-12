@@ -100,6 +100,7 @@ func (p *EverflowProvider) Resources(_ context.Context) []func() resource.Resour
 		NewAdvertiserResource,
 		NewAffiliateResource,
 		NewAffiliateOfferVisibilityResource,
+		NewAffiliatePostbackResource,
 		NewOfferResource,
 	}
 }
