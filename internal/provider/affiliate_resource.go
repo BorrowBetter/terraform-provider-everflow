@@ -271,6 +271,9 @@ func (r *AffiliateResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 	raw["account_status"] = "inactive"
 
+	// Billing is write-only: GET never returns it, PUT requires it.
+	raw["billing"] = everflow.DefaultBilling()
+
 	if _, err := r.client.UpdateAffiliate(ctx, id, raw); err != nil {
 		resp.Diagnostics.AddError("Failed to soft-delete Everflow affiliate", err.Error())
 		return
@@ -316,6 +319,11 @@ func (r *AffiliateResource) fetchAndOverlay(ctx context.Context, id int64, plan 
 	// (writeAffiliateToModel) maps "" back to null so the null round-
 	// trip is drift-free.
 	raw["internal_notes"] = plan.InternalNotes.ValueString()
+
+	// Billing is write-only: Everflow's GET never returns it, but PUT
+	// requires it. Inject the default so the full-replacement PUT
+	// doesn't fail with "400 Invalid parameters".
+	raw["billing"] = everflow.DefaultBilling()
 
 	return raw, nil
 }

@@ -158,6 +158,15 @@ resource "everflow_affiliate" "test" {
 						if !ok || len(labels) != 2 {
 							return fmt.Errorf("PUT body missing preserved labels: %v", state.lastPutBody["labels"])
 						}
+						// Billing must be injected into every PUT body
+						// because GET never returns it (write-only).
+						billing, ok := state.lastPutBody["billing"].(map[string]any)
+						if !ok {
+							return fmt.Errorf("PUT body missing billing: %v", state.lastPutBody["billing"])
+						}
+						if billing["billing_frequency"] != "monthly" {
+							return fmt.Errorf("PUT body billing.billing_frequency = %v, want monthly", billing["billing_frequency"])
+						}
 						if state.lastPutBody["internal_notes"] != "Managed by Terraform" {
 							return fmt.Errorf("PUT body internal_notes = %v, want 'Managed by Terraform'", state.lastPutBody["internal_notes"])
 						}

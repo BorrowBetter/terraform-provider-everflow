@@ -281,6 +281,9 @@ func (r *AdvertiserResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 	raw["account_status"] = "inactive"
 
+	// Billing is write-only: GET never returns it, PUT requires it.
+	raw["billing"] = everflow.DefaultBilling()
+
 	if _, err := r.client.UpdateAdvertiser(ctx, id, raw); err != nil {
 		resp.Diagnostics.AddError("Failed to soft-delete Everflow advertiser", err.Error())
 		return
@@ -327,6 +330,11 @@ func (r *AdvertiserResource) fetchAndOverlay(ctx context.Context, id int64, plan
 	// (writeAdvertiserToModel) maps "" back to null so the null round-
 	// trip is drift-free.
 	raw["internal_notes"] = plan.InternalNotes.ValueString()
+
+	// Billing is write-only: Everflow's GET never returns it, but PUT
+	// requires it. Inject the default so the full-replacement PUT
+	// doesn't fail with "400 Invalid parameters".
+	raw["billing"] = everflow.DefaultBilling()
 
 	return raw, nil
 }

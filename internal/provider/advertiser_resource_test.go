@@ -109,6 +109,23 @@ resource "everflow_advertiser" "test" {
 					resource.TestCheckResourceAttr("everflow_advertiser.test", "network_advertiser_id", "42"),
 					resource.TestCheckResourceAttr("everflow_advertiser.test", "network_id", "1"),
 					resource.TestCheckResourceAttr("everflow_advertiser.test", "account_status", "active"),
+					func(_ *terraform.State) error {
+						state.mu.Lock()
+						defer state.mu.Unlock()
+						if state.lastPostBody == nil {
+							return fmt.Errorf("expected a POST on Create, got none")
+						}
+						// Billing must be in POST body — this is the
+						// fix for the advertiser billing gap.
+						billing, ok := state.lastPostBody["billing"].(map[string]any)
+						if !ok {
+							return fmt.Errorf("POST body missing billing object: %v", state.lastPostBody["billing"])
+						}
+						if billing["billing_frequency"] != "monthly" {
+							return fmt.Errorf("POST body billing.billing_frequency = %v, want monthly", billing["billing_frequency"])
+						}
+						return nil
+					},
 				),
 			},
 			// Update — rename + add internal_notes. The server must receive
@@ -447,6 +464,7 @@ type advertiserRecord struct {
 type advertiserServerState struct {
 	mu           sync.Mutex
 	record       *advertiserRecord
+	lastPostBody map[string]any
 	lastPutBody  map[string]any
 	deleteCalled bool
 	force404     bool
@@ -484,6 +502,7 @@ func newAdvertiserTestServer(t *testing.T, seed *advertiserRecord) (*httptest.Se
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			state.lastPostBody = body
 			// Populate the server record from the POST body. Absent fields
 			// stay at their seed values, which matches the real API's "PUT
 			// replaces, POST creates" asymmetry closely enough for tests.
