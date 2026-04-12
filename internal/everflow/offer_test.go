@@ -35,6 +35,7 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 			"network_advertiser_id": 42,
 			"destination_url": "https://example.com/landing",
 			"offer_status": "active",
+			"visibility": "private",
 			"currency_id": "USD",
 			"conversion_method": "server_postback",
 			"network_tracking_domain_id": 5,
@@ -65,6 +66,7 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 		CurrencyID:              "USD",
 		ConversionMethod:        "server_postback",
 		NetworkTrackingDomainID: 5,
+		Visibility:              "private",
 		InternalNotes:           "hello",
 		PayoutRevenue: []PayoutRevenueEntry{{
 			EntryName:     "Base",
@@ -107,6 +109,9 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 	if gotBody["network_tracking_domain_id"].(float64) != 5 {
 		t.Errorf("body.network_tracking_domain_id = %v, want 5", gotBody["network_tracking_domain_id"])
 	}
+	if gotBody["visibility"] != "private" {
+		t.Errorf("body.visibility = %v, want private", gotBody["visibility"])
+	}
 	if gotBody["internal_notes"] != "hello" {
 		t.Errorf("body.internal_notes = %v, want hello", gotBody["internal_notes"])
 	}
@@ -137,6 +142,9 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 
 	if got.NetworkOfferID != 77 {
 		t.Errorf("resp.NetworkOfferID = %d, want 77", got.NetworkOfferID)
+	}
+	if got.Visibility != "private" {
+		t.Errorf("resp.Visibility = %q, want private", got.Visibility)
 	}
 	if got.TimeCreated != 1700000000 {
 		t.Errorf("resp.TimeCreated = %d, want 1700000000", got.TimeCreated)
@@ -177,6 +185,9 @@ func TestCreateOffer_OmitsInternalNotesWhenEmpty(t *testing.T) {
 		t.Fatalf("CreateOffer returned error: %v", err)
 	}
 
+	if _, present := gotBody["visibility"]; present {
+		t.Errorf("visibility should be omitted when empty, got %v", gotBody["visibility"])
+	}
 	if _, present := gotBody["internal_notes"]; present {
 		t.Errorf("internal_notes should be omitted when empty, got %v", gotBody["internal_notes"])
 	}

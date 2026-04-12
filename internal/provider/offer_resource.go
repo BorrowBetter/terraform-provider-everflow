@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
@@ -60,6 +61,7 @@ type OfferResourceModel struct {
 	CurrencyID              types.String         `tfsdk:"currency_id"`
 	ConversionMethod        types.String         `tfsdk:"conversion_method"`
 	NetworkTrackingDomainID types.Int64          `tfsdk:"network_tracking_domain_id"`
+	Visibility              types.String         `tfsdk:"visibility"`
 	InternalNotes           types.String         `tfsdk:"internal_notes"`
 	PayoutRevenue           []PayoutRevenueModel `tfsdk:"payout_revenue"`
 }
@@ -105,7 +107,7 @@ func (r *OfferResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"Everflow's PUT endpoint is a full replacement — any field not " +
 			"included in the request body is reset to defaults. To avoid " +
 			"clobbering nested objects the schema does not expose (e.g. " +
-			"`ruleset`, `traffic_filters`, `creatives`, `labels`, `visibility`, " +
+			"`ruleset`, `traffic_filters`, `creatives`, `labels`, " +
 			"`category`, conversion caps), updates are performed as " +
 			"fetch-modify-put: the existing record is GETed, the schema-managed " +
 			"fields are overlaid, and the merged payload is PUT back. " +
@@ -186,6 +188,17 @@ func (r *OfferResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"network_tracking_domain_id": schema.Int64Attribute{
 				MarkdownDescription: "Numeric ID of the Everflow tracking domain used for click/conversion URLs on this offer.",
 				Required:            true,
+			},
+			"visibility": schema.StringAttribute{
+				MarkdownDescription: "Offer visibility. One of `public` (anyone can run), `require_approval` (affiliates must apply), `private` (hidden unless explicitly whitelisted via `everflow_affiliate_offer_visibility`). Defaults to `public` server-side when omitted on create.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.OneOf("public", "require_approval", "private"),
+				},
 			},
 			"internal_notes": schema.StringAttribute{
 				MarkdownDescription: "Free-form notes visible only to network employees. A good place for Terraform-managed markers (e.g. `Managed by Terraform — do not edit in UI`).",
@@ -290,6 +303,7 @@ func (r *OfferResource) Create(ctx context.Context, req resource.CreateRequest, 
 		CurrencyID:              plan.CurrencyID.ValueString(),
 		ConversionMethod:        plan.ConversionMethod.ValueString(),
 		NetworkTrackingDomainID: plan.NetworkTrackingDomainID.ValueInt64(),
+		Visibility:              plan.Visibility.ValueString(),
 		InternalNotes:           plan.InternalNotes.ValueString(),
 		PayoutRevenue:           payoutRevenueModelsToClient(plan.PayoutRevenue),
 	}
@@ -440,6 +454,12 @@ func (r *OfferResource) fetchAndOverlay(ctx context.Context, id int64, plan Offe
 	raw["conversion_method"] = plan.ConversionMethod.ValueString()
 	raw["network_tracking_domain_id"] = plan.NetworkTrackingDomainID.ValueInt64()
 
+	// Visibility: Optional+Computed with UseStateForUnknown, so the plan
+	// always carries a value (either user-set or carried forward from
+	// state). Unlike internal_notes, this is an enum — "" is never a
+	// valid value, and the server always returns a non-empty string.
+	raw["visibility"] = plan.Visibility.ValueString()
+
 	// Optional field: write an explicit empty string when the plan is
 	// null. Everflow's PUT is full replacement, so *omitting* the key
 	// from the body would leave a stale value behind on the server; we
@@ -480,6 +500,7 @@ func writeOfferToModel(src everflow.Offer, dst *OfferResourceModel) {
 	dst.CurrencyID = types.StringValue(src.CurrencyID)
 	dst.ConversionMethod = types.StringValue(src.ConversionMethod)
 	dst.NetworkTrackingDomainID = types.Int64Value(src.NetworkTrackingDomainID)
+	dst.Visibility = types.StringValue(src.Visibility)
 	if src.InternalNotes == "" {
 		dst.InternalNotes = types.StringNull()
 	} else {
