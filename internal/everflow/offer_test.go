@@ -265,6 +265,111 @@ func TestGetOffer_DecodesTypedResponse(t *testing.T) {
 	}
 }
 
+// TestGetOffer_DecodesNestedPayoutRevenue locks in the union decoding
+// for the shape Everflow's real GET responses actually use:
+// `payout_revenue` is nested under `relationship.payout_revenue.entries`
+// rather than returned at the top level.
+//
+// This is a decoding-only difference — POST/PUT still take the top-level
+// array. Without the custom UnmarshalJSON, `terraform import` silently
+// loses the payouts because the decoder never sees them. The test also
+// covers `payout_type = "null_value"`, which is the sentinel Everflow
+// uses for secondary revenue-tracking entries that have no payout.
+func TestGetOffer_DecodesNestedPayoutRevenue(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"network_offer_id": 77,
+			"name": "Acme Offer",
+			"offer_status": "active",
+			"relationship": {
+				"payout_revenue": {
+					"total": 2,
+					"entries": [
+						{
+							"entry_name": "Base",
+							"payout_type": "cpa",
+							"payout_percentage": 90,
+							"revenue_type": "rps",
+							"revenue_percentage": 100,
+							"is_default": true,
+							"is_private": false
+						},
+						{
+							"entry_name": "Revenue Received",
+							"payout_type": "null_value",
+							"revenue_type": "rps",
+							"revenue_percentage": 100,
+							"is_default": false,
+							"is_private": true
+						}
+					]
+				}
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	c := New("k", srv.URL, "test")
+	got, err := c.GetOffer(context.Background(), 77)
+	if err != nil {
+		t.Fatalf("GetOffer returned error: %v", err)
+	}
+
+	if len(got.PayoutRevenue) != 2 {
+		t.Fatalf("len(PayoutRevenue) = %d, want 2", len(got.PayoutRevenue))
+	}
+	if got.PayoutRevenue[0].PayoutType != "cpa" || !got.PayoutRevenue[0].IsDefault {
+		t.Errorf("PayoutRevenue[0] = %+v, want cpa/default", got.PayoutRevenue[0])
+	}
+	if got.PayoutRevenue[1].PayoutType != "null_value" || got.PayoutRevenue[1].IsDefault {
+		t.Errorf("PayoutRevenue[1] = %+v, want null_value/non-default", got.PayoutRevenue[1])
+	}
+}
+
+// TestGetOffer_TopLevelPayoutRevenueTakesPrecedence verifies the union
+// decoder prefers the top-level field when BOTH shapes are present in a
+// response. This isn't expected in real traffic — it's a defensive
+// assertion so a future API change that starts returning both doesn't
+// silently favor the wrong shape.
+func TestGetOffer_TopLevelPayoutRevenueTakesPrecedence(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"network_offer_id": 77,
+			"name": "Acme Offer",
+			"payout_revenue": [
+				{"payout_type": "cpa", "revenue_type": "rpa", "is_default": true, "is_private": false}
+			],
+			"relationship": {
+				"payout_revenue": {
+					"entries": [
+						{"payout_type": "cpc", "revenue_type": "rpc", "is_default": true, "is_private": false},
+						{"payout_type": "cpm", "revenue_type": "rpm", "is_default": false, "is_private": false}
+					]
+				}
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	c := New("k", srv.URL, "test")
+	got, err := c.GetOffer(context.Background(), 77)
+	if err != nil {
+		t.Fatalf("GetOffer returned error: %v", err)
+	}
+	if len(got.PayoutRevenue) != 1 {
+		t.Fatalf("len(PayoutRevenue) = %d, want 1 (top-level should win)", len(got.PayoutRevenue))
+	}
+	if got.PayoutRevenue[0].PayoutType != "cpa" {
+		t.Errorf("PayoutRevenue[0].PayoutType = %q, want cpa (top-level)", got.PayoutRevenue[0].PayoutType)
+	}
+}
+
 func TestGetOfferRaw_PreservesUnknownFields(t *testing.T) {
 	t.Parallel()
 
