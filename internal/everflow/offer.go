@@ -61,6 +61,7 @@ type Offer struct {
 	CurrencyID              string               `json:"currency_id"`
 	ConversionMethod        string               `json:"conversion_method"`
 	NetworkTrackingDomainID int64                `json:"network_tracking_domain_id"`
+	RedirectMode            string               `json:"redirect_mode,omitempty"`
 	Visibility              string               `json:"visibility,omitempty"`
 	InternalNotes           string               `json:"internal_notes,omitempty"`
 	PayoutRevenue           []PayoutRevenueEntry `json:"payout_revenue,omitempty"`
@@ -117,6 +118,7 @@ type CreateOfferInput struct {
 	CurrencyID              string               `json:"currency_id"`
 	ConversionMethod        string               `json:"conversion_method"`
 	NetworkTrackingDomainID int64                `json:"network_tracking_domain_id"`
+	RedirectMode            string               `json:"redirect_mode,omitempty"`
 	Visibility              string               `json:"visibility,omitempty"`
 	InternalNotes           string               `json:"internal_notes,omitempty"`
 	PayoutRevenue           []PayoutRevenueEntry `json:"payout_revenue"`

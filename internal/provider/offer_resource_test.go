@@ -158,6 +158,12 @@ resource "everflow_offer" "test" {
 						if state.lastPostBody == nil {
 							return fmt.Errorf("expected a POST on Create, got none")
 						}
+						// redirect_mode must be present in POST body —
+						// this is the fix for "Field redirect_mode is
+						// required".
+						if state.lastPostBody["redirect_mode"] != "standard" {
+							return fmt.Errorf("POST body redirect_mode = %v, want standard", state.lastPostBody["redirect_mode"])
+						}
 						payouts, ok := state.lastPostBody["payout_revenue"].([]any)
 						if !ok || len(payouts) != 1 {
 							return fmt.Errorf("POST body payout_revenue = %v, want 1-element array", state.lastPostBody["payout_revenue"])
@@ -940,6 +946,7 @@ type offerRecord struct {
 	NetworkAdvertiserID     int64
 	DestinationURL          string
 	OfferStatus             string
+	RedirectMode            string
 	Visibility              string
 	CurrencyID              string
 	ConversionMethod        string
@@ -1008,6 +1015,7 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 			state.record.NetworkAdvertiserID = int64FromMap(body, "network_advertiser_id")
 			state.record.DestinationURL = stringFromMap(body, "destination_url")
 			state.record.OfferStatus = stringFromMap(body, "offer_status")
+			state.record.RedirectMode = stringFromMap(body, "redirect_mode")
 			state.record.Visibility = stringFromMap(body, "visibility")
 			state.record.CurrencyID = stringFromMap(body, "currency_id")
 			state.record.ConversionMethod = stringFromMap(body, "conversion_method")
@@ -1048,6 +1056,7 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 			state.record.NetworkAdvertiserID = int64FromMap(body, "network_advertiser_id")
 			state.record.DestinationURL = stringFromMap(body, "destination_url")
 			state.record.OfferStatus = stringFromMap(body, "offer_status")
+			state.record.RedirectMode = stringFromMap(body, "redirect_mode")
 			state.record.Visibility = stringFromMap(body, "visibility")
 			state.record.CurrencyID = stringFromMap(body, "currency_id")
 			state.record.ConversionMethod = stringFromMap(body, "conversion_method")
@@ -1065,8 +1074,9 @@ func newOfferTestServer(t *testing.T, seed *offerRecord) (*httptest.Server, *off
 				switch k {
 				case "network_offer_id", "network_id", "name",
 					"network_advertiser_id", "destination_url",
-					"offer_status", "visibility", "currency_id",
-					"conversion_method", "network_tracking_domain_id",
+					"offer_status", "redirect_mode", "visibility",
+					"currency_id", "conversion_method",
+					"network_tracking_domain_id",
 					"internal_notes", "payout_revenue",
 					"time_created", "time_saved":
 					continue
@@ -1095,6 +1105,10 @@ func writeOfferRecord(w http.ResponseWriter, rec *offerRecord, nested bool) {
 	if vis == "" {
 		vis = "public" // Server default.
 	}
+	rm := rec.RedirectMode
+	if rm == "" {
+		rm = "standard" // Server default.
+	}
 	out := map[string]any{
 		"network_offer_id":           rec.ID,
 		"network_id":                 rec.NetworkID,
@@ -1102,6 +1116,7 @@ func writeOfferRecord(w http.ResponseWriter, rec *offerRecord, nested bool) {
 		"network_advertiser_id":      rec.NetworkAdvertiserID,
 		"destination_url":            rec.DestinationURL,
 		"offer_status":               rec.OfferStatus,
+		"redirect_mode":              rm,
 		"visibility":                 vis,
 		"currency_id":                rec.CurrencyID,
 		"conversion_method":          rec.ConversionMethod,

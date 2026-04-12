@@ -61,6 +61,7 @@ type OfferResourceModel struct {
 	CurrencyID              types.String         `tfsdk:"currency_id"`
 	ConversionMethod        types.String         `tfsdk:"conversion_method"`
 	NetworkTrackingDomainID types.Int64          `tfsdk:"network_tracking_domain_id"`
+	RedirectMode            types.String         `tfsdk:"redirect_mode"`
 	Visibility              types.String         `tfsdk:"visibility"`
 	InternalNotes           types.String         `tfsdk:"internal_notes"`
 	PayoutRevenue           []PayoutRevenueModel `tfsdk:"payout_revenue"`
@@ -200,6 +201,14 @@ func (r *OfferResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 					stringvalidator.OneOf("public", "require_approval", "private"),
 				},
 			},
+			"redirect_mode": schema.StringAttribute{
+				MarkdownDescription: "How clicks are redirected. Defaults to `standard` server-side when omitted on create. Other values include `hosted_file` and `transparent_proxy` — the full set depends on your Everflow configuration.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"internal_notes": schema.StringAttribute{
 				MarkdownDescription: "Free-form notes visible only to network employees. A good place for Terraform-managed markers (e.g. `Managed by Terraform — do not edit in UI`).",
 				Optional:            true,
@@ -295,6 +304,12 @@ func (r *OfferResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
+	// redirect_mode: default to "standard" when omitted.
+	redirectMode := plan.RedirectMode.ValueString()
+	if plan.RedirectMode.IsNull() || plan.RedirectMode.IsUnknown() {
+		redirectMode = "standard"
+	}
+
 	input := everflow.CreateOfferInput{
 		Name:                    plan.Name.ValueString(),
 		NetworkAdvertiserID:     plan.NetworkAdvertiserID.ValueInt64(),
@@ -303,6 +318,7 @@ func (r *OfferResource) Create(ctx context.Context, req resource.CreateRequest, 
 		CurrencyID:              plan.CurrencyID.ValueString(),
 		ConversionMethod:        plan.ConversionMethod.ValueString(),
 		NetworkTrackingDomainID: plan.NetworkTrackingDomainID.ValueInt64(),
+		RedirectMode:            redirectMode,
 		Visibility:              plan.Visibility.ValueString(),
 		InternalNotes:           plan.InternalNotes.ValueString(),
 		PayoutRevenue:           payoutRevenueModelsToClient(plan.PayoutRevenue),
@@ -454,6 +470,11 @@ func (r *OfferResource) fetchAndOverlay(ctx context.Context, id int64, plan Offe
 	raw["conversion_method"] = plan.ConversionMethod.ValueString()
 	raw["network_tracking_domain_id"] = plan.NetworkTrackingDomainID.ValueInt64()
 
+	// redirect_mode: Optional+Computed with UseStateForUnknown, so the
+	// plan always carries a value (either user-set or carried forward
+	// from state).
+	raw["redirect_mode"] = plan.RedirectMode.ValueString()
+
 	// Visibility: Optional+Computed with UseStateForUnknown, so the plan
 	// always carries a value (either user-set or carried forward from
 	// state). Unlike internal_notes, this is an enum — "" is never a
@@ -500,6 +521,7 @@ func writeOfferToModel(src everflow.Offer, dst *OfferResourceModel) {
 	dst.CurrencyID = types.StringValue(src.CurrencyID)
 	dst.ConversionMethod = types.StringValue(src.ConversionMethod)
 	dst.NetworkTrackingDomainID = types.Int64Value(src.NetworkTrackingDomainID)
+	dst.RedirectMode = types.StringValue(src.RedirectMode)
 	dst.Visibility = types.StringValue(src.Visibility)
 	if src.InternalNotes == "" {
 		dst.InternalNotes = types.StringNull()

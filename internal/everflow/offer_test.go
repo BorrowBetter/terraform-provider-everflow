@@ -35,6 +35,7 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 			"network_advertiser_id": 42,
 			"destination_url": "https://example.com/landing",
 			"offer_status": "active",
+			"redirect_mode": "standard",
 			"visibility": "private",
 			"currency_id": "USD",
 			"conversion_method": "server_postback",
@@ -66,6 +67,7 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 		CurrencyID:              "USD",
 		ConversionMethod:        "server_postback",
 		NetworkTrackingDomainID: 5,
+		RedirectMode:            "standard",
 		Visibility:              "private",
 		InternalNotes:           "hello",
 		PayoutRevenue: []PayoutRevenueEntry{{
@@ -108,6 +110,9 @@ func TestCreateOffer_PostsExpectedBody(t *testing.T) {
 	}
 	if gotBody["network_tracking_domain_id"].(float64) != 5 {
 		t.Errorf("body.network_tracking_domain_id = %v, want 5", gotBody["network_tracking_domain_id"])
+	}
+	if gotBody["redirect_mode"] != "standard" {
+		t.Errorf("body.redirect_mode = %v, want standard", gotBody["redirect_mode"])
 	}
 	if gotBody["visibility"] != "private" {
 		t.Errorf("body.visibility = %v, want private", gotBody["visibility"])
@@ -230,6 +235,7 @@ func TestGetOffer_DecodesTypedResponse(t *testing.T) {
 			"network_advertiser_id": 42,
 			"destination_url": "https://example.com/landing",
 			"offer_status": "active",
+			"redirect_mode": "standard",
 			"currency_id": "USD",
 			"conversion_method": "server_postback",
 			"network_tracking_domain_id": 5,
