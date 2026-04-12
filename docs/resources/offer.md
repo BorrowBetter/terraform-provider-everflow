@@ -79,6 +79,7 @@ resource "everflow_offer" "example" {
 
 - `internal_notes` (String) Free-form notes visible only to network employees. A good place for Terraform-managed markers (e.g. `Managed by Terraform — do not edit in UI`).
 - `payout_revenue` (Block List) Payout and revenue rules for this offer. At least one entry is required; exactly one must have `is_default = true`. This block is schema-managed — UI edits to payouts are clobbered on the next apply. (see [below for nested schema](#nestedblock--payout_revenue))
+- `redirect_mode` (String) How clicks are redirected. Defaults to `standard` server-side when omitted on create. Other values include `hosted_file` and `transparent_proxy` — the full set depends on your Everflow configuration.
 - `visibility` (String) Offer visibility. One of `public` (anyone can run), `require_approval` (affiliates must apply), `private` (hidden unless explicitly whitelisted via `everflow_affiliate_offer_visibility`). Defaults to `public` server-side when omitted on create.
 
 ### Read-Only
