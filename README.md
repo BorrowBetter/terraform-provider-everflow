@@ -5,7 +5,7 @@ marketing platform. Lets you manage Everflow Network resources —
 advertisers, offers, affiliates — as first-class Terraform resources
 alongside the rest of your infrastructure.
 
-> **Status:** pre-release. v0.1.0 ships the three core Network resources
+> **Status:** v0.1.0. Ships the three core Network resources
 > (advertiser, offer, affiliate) and is intended for BorrowBetter's own
 > infrastructure, but the provider itself is vendor-agnostic and safe
 > to reuse.
@@ -122,15 +122,10 @@ credentials and no GPG key material in GitHub Secrets. See
 
 ## Scope
 
-v0.1.0 target resources:
-
-Shipped:
+v0.1.0 ships:
 
 - `everflow_advertiser` — `/v1/networks/advertisers`
 - `everflow_affiliate` — `/v1/networks/affiliates`
-
-Planned (not yet implemented):
-
 - `everflow_offer` — `/v1/networks/offers`
 
 Explicitly out of scope for v0.1.0 (planned for future releases):
