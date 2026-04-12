@@ -157,6 +157,8 @@ func TestGetAffiliate_DecodesTypedResponse(t *testing.T) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
+		// Billing is intentionally absent — the real Everflow API does
+		// NOT return billing on GET (write-only field).
 		_, _ = w.Write([]byte(`{
 			"network_affiliate_id": 42,
 			"network_id": 1,
@@ -164,12 +166,7 @@ func TestGetAffiliate_DecodesTypedResponse(t *testing.T) {
 			"account_status": "active",
 			"network_employee_id": 11,
 			"default_currency_id": "USD",
-			"internal_notes": "hello",
-			"billing": {
-				"billing_frequency": "monthly",
-				"payment_type": "none",
-				"details": {"day_of_month": 1}
-			}
+			"internal_notes": "hello"
 		}`))
 	}))
 	defer srv.Close()
@@ -191,15 +188,6 @@ func TestGetAffiliate_DecodesTypedResponse(t *testing.T) {
 	}
 	if got.InternalNotes != "hello" {
 		t.Errorf("InternalNotes = %q, want hello", got.InternalNotes)
-	}
-	if got.Billing.BillingFrequency != "monthly" {
-		t.Errorf("Billing.BillingFrequency = %q, want monthly", got.Billing.BillingFrequency)
-	}
-	if got.Billing.PaymentType != "none" {
-		t.Errorf("Billing.PaymentType = %q, want none", got.Billing.PaymentType)
-	}
-	if got.Billing.Details.DayOfMonth != 1 {
-		t.Errorf("Billing.Details.DayOfMonth = %d, want 1", got.Billing.Details.DayOfMonth)
 	}
 }
 

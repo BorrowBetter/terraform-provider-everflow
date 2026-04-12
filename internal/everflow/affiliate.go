@@ -15,19 +15,31 @@ import (
 const affiliatesPath = "/v1/networks/affiliates"
 
 // AffiliateBillingDetails holds the inner "details" block of a billing
-// object. Flattened to a single field in the Terraform schema (day_of_month)
-// but preserved as the nested JSON shape the API expects on the wire.
+// object.
 type AffiliateBillingDetails struct {
 	DayOfMonth int64 `json:"day_of_month"`
 }
 
 // AffiliateBilling is the billing block Everflow requires on affiliate
-// creation. The Terraform schema exposes billing_frequency, payment_type,
-// and day_of_month (flattened from details.day_of_month).
+// creation. Billing is write-only: the API accepts it on POST but does
+// NOT return it on GET. Consequently it is not exposed in the Terraform
+// schema — the provider hardcodes sensible defaults matching the
+// Everflow UI (monthly, no payment, day 1).
 type AffiliateBilling struct {
 	BillingFrequency string                  `json:"billing_frequency"`
 	PaymentType      string                  `json:"payment_type"`
 	Details          AffiliateBillingDetails `json:"details"`
+}
+
+// DefaultAffiliateBilling returns the billing block the provider sends
+// on POST when creating an affiliate. Values match Everflow's UI
+// defaults: monthly frequency, no payment method, day-of-month 1.
+func DefaultAffiliateBilling() AffiliateBilling {
+	return AffiliateBilling{
+		BillingFrequency: "monthly",
+		PaymentType:      "none",
+		Details:          AffiliateBillingDetails{DayOfMonth: 1},
+	}
 }
 
 // Affiliate is the subset of Everflow's affiliate resource that the
@@ -35,32 +47,32 @@ type AffiliateBilling struct {
 // API's JSON keys so round-trips through fetch-modify-put are lossless for
 // these fields.
 //
-// Fields outside of this struct (contact_address, users, labels, settings,
-// etc.) are preserved by the resource's Update method using the raw map
-// variant below — not by adding more typed fields here. This keeps the typed
-// surface small while still respecting Everflow's full-replacement PUT
-// semantics.
+// Fields outside of this struct (billing, contact_address, users, labels,
+// settings, etc.) are preserved by the resource's Update method using the
+// raw map variant below — not by adding more typed fields here. This keeps
+// the typed surface small while still respecting Everflow's full-replacement
+// PUT semantics.
 //
-// Note: unlike Advertiser, Affiliate has no reporting_timezone_id field at
-// the top level. Affiliate timezones live inside nested user objects, which
-// are out of scope for the initial resource.
+// Note: billing is intentionally excluded — the GET endpoint does not
+// return it (write-only). Unlike Advertiser, Affiliate has no
+// reporting_timezone_id field at the top level.
 type Affiliate struct {
-	NetworkAffiliateID int64            `json:"network_affiliate_id,omitempty"`
-	NetworkID          int64            `json:"network_id,omitempty"`
-	Name               string           `json:"name"`
-	AccountStatus      string           `json:"account_status"`
-	NetworkEmployeeID  int64            `json:"network_employee_id"`
-	DefaultCurrencyID  string           `json:"default_currency_id"`
-	InternalNotes      string           `json:"internal_notes,omitempty"`
-	Billing            AffiliateBilling `json:"billing"`
-	TimeCreated        int64            `json:"time_created,omitempty"`
-	TimeSaved          int64            `json:"time_saved,omitempty"`
+	NetworkAffiliateID int64  `json:"network_affiliate_id,omitempty"`
+	NetworkID          int64  `json:"network_id,omitempty"`
+	Name               string `json:"name"`
+	AccountStatus      string `json:"account_status"`
+	NetworkEmployeeID  int64  `json:"network_employee_id"`
+	DefaultCurrencyID  string `json:"default_currency_id"`
+	InternalNotes      string `json:"internal_notes,omitempty"`
+	TimeCreated        int64  `json:"time_created,omitempty"`
+	TimeSaved          int64  `json:"time_saved,omitempty"`
 }
 
 // CreateAffiliateInput is the request body sent to POST
 // /v1/networks/affiliates. It is a strict subset of Affiliate — only the
 // fields the Create endpoint actually accepts, and none of the server-
-// assigned ones. The Billing field is required by the API.
+// assigned ones. The Billing field is required by the API but write-only
+// (not returned on GET), so callers should use DefaultAffiliateBilling().
 type CreateAffiliateInput struct {
 	Name              string           `json:"name"`
 	AccountStatus     string           `json:"account_status"`

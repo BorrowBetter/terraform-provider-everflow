@@ -9,18 +9,13 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"github.com/BorrowBetter/terraform-provider-everflow/internal/everflow"
 )
@@ -33,35 +28,6 @@ var (
 	_ resource.ResourceWithConfigure   = &AffiliateResource{}
 	_ resource.ResourceWithImportState = &AffiliateResource{}
 )
-
-// billingAttrTypes defines the attribute type map for the billing nested
-// object. Reused by the schema default, writeAffiliateToModel, and anywhere
-// else that constructs a types.Object for billing.
-var billingAttrTypes = map[string]attr.Type{
-	"billing_frequency": types.StringType,
-	"payment_type":      types.StringType,
-	"day_of_month":      types.Int64Type,
-}
-
-// defaultBillingObject returns the default billing types.Object used when
-// the user omits the billing attribute. Values match Everflow's UI
-// defaults for a new affiliate: monthly billing, no payment, day 1.
-func defaultBillingObject() types.Object {
-	return types.ObjectValueMust(billingAttrTypes, map[string]attr.Value{
-		"billing_frequency": types.StringValue("monthly"),
-		"payment_type":      types.StringValue("none"),
-		"day_of_month":      types.Int64Value(1),
-	})
-}
-
-// AffiliateBillingModel maps the billing nested attribute to Go types.
-// The schema flattens details.day_of_month to just day_of_month for
-// simpler HCL; conversion helpers restructure for the API's wire format.
-type AffiliateBillingModel struct {
-	BillingFrequency types.String `tfsdk:"billing_frequency"`
-	PaymentType      types.String `tfsdk:"payment_type"`
-	DayOfMonth       types.Int64  `tfsdk:"day_of_month"`
-}
 
 // NewAffiliateResource is the factory registered in provider.Resources().
 func NewAffiliateResource() resource.Resource {
@@ -87,7 +53,6 @@ type AffiliateResourceModel struct {
 	NetworkEmployeeID  types.Int64  `tfsdk:"network_employee_id"`
 	DefaultCurrencyID  types.String `tfsdk:"default_currency_id"`
 	InternalNotes      types.String `tfsdk:"internal_notes"`
-	Billing            types.Object `tfsdk:"billing"`
 }
 
 // Metadata sets the fully-qualified resource type name (e.g. everflow_affiliate).
@@ -108,7 +73,7 @@ func (r *AffiliateResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"### Unmodeled fields\n\n" +
 			"Everflow's PUT endpoint is a full replacement — any field not included " +
 			"in the request body is reset to defaults. To avoid clobbering nested " +
-			"objects the schema does not expose (e.g. `contact_address`, `users`, " +
+			"objects the schema does not expose (e.g. `billing`, `contact_address`, `users`, " +
 			"`labels`), updates are performed as fetch-modify-put: the existing " +
 			"record is GETed, the schema-managed fields are overlaid, and the " +
 			"merged payload is PUT back. Out-of-band edits to unmodeled fields " +
@@ -165,34 +130,6 @@ func (r *AffiliateResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				MarkdownDescription: "Free-form notes visible only to network employees. A good place for Terraform-managed markers (e.g. `Managed by Terraform — do not edit in UI`).",
 				Optional:            true,
 			},
-			"billing": schema.SingleNestedAttribute{
-				MarkdownDescription: "Billing configuration for the affiliate. Required by the Everflow API on creation. " +
-					"If omitted, defaults to monthly billing with no payment on day 1 — matching Everflow's UI defaults. " +
-					"The schema flattens `details.day_of_month` to `day_of_month` for simpler HCL.",
-				Optional: true,
-				Computed: true,
-				Default:  objectdefault.StaticValue(defaultBillingObject()),
-				Attributes: map[string]schema.Attribute{
-					"billing_frequency": schema.StringAttribute{
-						MarkdownDescription: "How often the affiliate is billed (e.g. `monthly`, `biweekly`).",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("monthly"),
-					},
-					"payment_type": schema.StringAttribute{
-						MarkdownDescription: "Payment method for the affiliate (e.g. `none`, `wire`, `paypal`).",
-						Optional:            true,
-						Computed:            true,
-						Default:             stringdefault.StaticString("none"),
-					},
-					"day_of_month": schema.Int64Attribute{
-						MarkdownDescription: "Day of the month billing is processed. Flattened from the API's `details.day_of_month`.",
-						Optional:            true,
-						Computed:            true,
-						Default:             int64default.StaticInt64(1),
-					},
-				},
-			},
 		},
 	}
 }
@@ -225,25 +162,13 @@ func (r *AffiliateResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	var billing AffiliateBillingModel
-	resp.Diagnostics.Append(plan.Billing.As(ctx, &billing, basetypes.ObjectAsOptions{})...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
 	input := everflow.CreateAffiliateInput{
 		Name:              plan.Name.ValueString(),
 		AccountStatus:     plan.AccountStatus.ValueString(),
 		NetworkEmployeeID: plan.NetworkEmployeeID.ValueInt64(),
 		DefaultCurrencyID: plan.DefaultCurrencyID.ValueString(),
 		InternalNotes:     plan.InternalNotes.ValueString(),
-		Billing: everflow.AffiliateBilling{
-			BillingFrequency: billing.BillingFrequency.ValueString(),
-			PaymentType:      billing.PaymentType.ValueString(),
-			Details: everflow.AffiliateBillingDetails{
-				DayOfMonth: billing.DayOfMonth.ValueInt64(),
-			},
-		},
+		Billing:           everflow.DefaultAffiliateBilling(),
 	}
 
 	created, err := r.client.CreateAffiliate(ctx, input)
@@ -284,8 +209,8 @@ func (r *AffiliateResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 // Update implements the fetch-modify-put strategy: GET the raw map, overlay
 // the schema-managed fields with the plan values, PUT the merged body. This
-// keeps unmodeled fields (contact_address, users, labels, ...) intact
-// across Terraform-managed updates.
+// keeps unmodeled fields (billing, contact_address, users, labels, ...)
+// intact across Terraform-managed updates.
 func (r *AffiliateResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan AffiliateResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -392,27 +317,6 @@ func (r *AffiliateResource) fetchAndOverlay(ctx context.Context, id int64, plan 
 	// trip is drift-free.
 	raw["internal_notes"] = plan.InternalNotes.ValueString()
 
-	// Overlay billing fields onto the raw billing sub-object. Individual
-	// keys are written rather than replacing the entire billing map so
-	// that unmodeled billing sub-fields (e.g. default_payment_terms)
-	// survive the round trip.
-	var billing AffiliateBillingModel
-	if diags := plan.Billing.As(ctx, &billing, basetypes.ObjectAsOptions{}); !diags.HasError() {
-		rawBilling, ok := raw["billing"].(map[string]any)
-		if !ok {
-			rawBilling = map[string]any{}
-		}
-		rawBilling["billing_frequency"] = billing.BillingFrequency.ValueString()
-		rawBilling["payment_type"] = billing.PaymentType.ValueString()
-		details, ok := rawBilling["details"].(map[string]any)
-		if !ok {
-			details = map[string]any{}
-		}
-		details["day_of_month"] = billing.DayOfMonth.ValueInt64()
-		rawBilling["details"] = details
-		raw["billing"] = rawBilling
-	}
-
 	return raw, nil
 }
 
@@ -434,9 +338,4 @@ func writeAffiliateToModel(src everflow.Affiliate, dst *AffiliateResourceModel) 
 	} else {
 		dst.InternalNotes = types.StringValue(src.InternalNotes)
 	}
-	dst.Billing = types.ObjectValueMust(billingAttrTypes, map[string]attr.Value{
-		"billing_frequency": types.StringValue(src.Billing.BillingFrequency),
-		"payment_type":      types.StringValue(src.Billing.PaymentType),
-		"day_of_month":      types.Int64Value(src.Billing.Details.DayOfMonth),
-	})
 }

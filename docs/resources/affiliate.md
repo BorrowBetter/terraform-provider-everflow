@@ -7,7 +7,7 @@ description: |-
   Soft-delete semantics
   Everflow has no DELETE endpoint for affiliates. terraform destroy instead PUTs account_status = "inactive" and removes the resource from Terraform state. The record persists in Everflow as an inactive affiliate. To fully remove a resource from state without deactivating it, use terraform state rm before terraform destroy.
   Unmodeled fields
-  Everflow's PUT endpoint is a full replacement — any field not included in the request body is reset to defaults. To avoid clobbering nested objects the schema does not expose (e.g. contact_address, users, labels), updates are performed as fetch-modify-put: the existing record is GETed, the schema-managed fields are overlaid, and the merged payload is PUT back. Out-of-band edits to unmodeled fields are preserved across apply cycles.
+  Everflow's PUT endpoint is a full replacement — any field not included in the request body is reset to defaults. To avoid clobbering nested objects the schema does not expose (e.g. billing, contact_address, users, labels), updates are performed as fetch-modify-put: the existing record is GETed, the schema-managed fields are overlaid, and the merged payload is PUT back. Out-of-band edits to unmodeled fields are preserved across apply cycles.
 ---
 
 # everflow_affiliate (Resource)
@@ -20,7 +20,7 @@ Everflow has no DELETE endpoint for affiliates. `terraform destroy` instead PUTs
 
 ### Unmodeled fields
 
-Everflow's PUT endpoint is a full replacement — any field not included in the request body is reset to defaults. To avoid clobbering nested objects the schema does not expose (e.g. `contact_address`, `users`, `labels`), updates are performed as fetch-modify-put: the existing record is GETed, the schema-managed fields are overlaid, and the merged payload is PUT back. Out-of-band edits to unmodeled fields are preserved across apply cycles.
+Everflow's PUT endpoint is a full replacement — any field not included in the request body is reset to defaults. To avoid clobbering nested objects the schema does not expose (e.g. `billing`, `contact_address`, `users`, `labels`), updates are performed as fetch-modify-put: the existing record is GETed, the schema-managed fields are overlaid, and the merged payload is PUT back. Out-of-band edits to unmodeled fields are preserved across apply cycles.
 
 ## Example Usage
 
@@ -30,12 +30,6 @@ resource "everflow_affiliate" "example" {
   account_status      = "active"
   network_employee_id = 1
   default_currency_id = "USD"
-
-  billing = {
-    billing_frequency = "monthly"
-    payment_type      = "none"
-    day_of_month      = 1
-  }
 
   internal_notes = "Managed by Terraform"
 }
@@ -53,7 +47,6 @@ resource "everflow_affiliate" "example" {
 
 ### Optional
 
-- `billing` (Attributes) Billing configuration for the affiliate. Required by the Everflow API on creation. If omitted, defaults to monthly billing with no payment on day 1 — matching Everflow's UI defaults. The schema flattens `details.day_of_month` to `day_of_month` for simpler HCL. (see [below for nested schema](#nestedatt--billing))
 - `internal_notes` (String) Free-form notes visible only to network employees. A good place for Terraform-managed markers (e.g. `Managed by Terraform — do not edit in UI`).
 
 ### Read-Only
@@ -62,15 +55,6 @@ resource "everflow_affiliate" "example" {
 - `network_id` (Number) Identifier of the Everflow network this affiliate belongs to. Computed at create time.
 - `time_created` (Number) Unix timestamp (seconds) the affiliate was created.
 - `time_saved` (Number) Unix timestamp (seconds) of the affiliate's last save. Bumped by every PUT the resource issues, so plans that produce an Update will show this as `(known after apply)`.
-
-<a id="nestedatt--billing"></a>
-### Nested Schema for `billing`
-
-Optional:
-
-- `billing_frequency` (String) How often the affiliate is billed (e.g. `monthly`, `biweekly`).
-- `day_of_month` (Number) Day of the month billing is processed. Flattened from the API's `details.day_of_month`.
-- `payment_type` (String) Payment method for the affiliate (e.g. `none`, `wire`, `paypal`).
 
 ## Import
 
