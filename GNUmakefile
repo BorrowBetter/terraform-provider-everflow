@@ -29,7 +29,7 @@ install: build
 	mv $(BINARY) $(INSTALL_DIR)/$(BINARY)
 
 test:
-	go test ./... -race -timeout 300s
+	go test ./... -race -timeout 120s
 
 testacc:
 	TF_ACC=1 go test ./internal/provider -v -race -timeout 120m

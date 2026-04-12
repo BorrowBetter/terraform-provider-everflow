@@ -50,4 +50,4 @@ jobs:
         with:
           terraform_wrapper: false
       - run: go mod download
-      - run: go test ./... -race -timeout 300s
+      - run: go test ./... -race -timeout 120s
