@@ -943,6 +943,60 @@ resource "everflow_offer" "test" {
 	})
 }
 
+// TestOfferResource_ExplicitZeroPayoutAmount is a regression guard for
+// the bug where payout_amount = 0 and revenue_amount = 0 caused
+// "Provider produced inconsistent result after apply" because
+// writeOfferToModel was normalizing 0 → null, conflicting with the
+// plan's explicit 0 value.
+func TestOfferResource_ExplicitZeroPayoutAmount(t *testing.T) {
+	t.Parallel()
+
+	srv, _ := newOfferTestServer(t, &offerRecord{
+		ID:                      88,
+		NetworkID:               1,
+		Name:                    "Zero Payout Offer",
+		NetworkAdvertiserID:     42,
+		DestinationURL:          "https://example.com/landing",
+		OfferStatus:             "active",
+		CurrencyID:              "USD",
+		ConversionMethod:        "server_postback",
+		NetworkTrackingDomainID: 5,
+	})
+	defer srv.Close()
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testProviderConfig(srv) + `
+resource "everflow_offer" "test" {
+  name                       = "Zero Payout Offer"
+  network_advertiser_id      = 42
+  destination_url            = "https://example.com/landing"
+  offer_status               = "active"
+  currency_id                = "USD"
+  conversion_method          = "server_postback"
+  network_tracking_domain_id = 5
+
+  payout_revenue {
+    payout_type    = "cpa"
+    payout_amount  = 0
+    revenue_type   = "rpa"
+    revenue_amount = 0
+    is_default     = true
+    is_private     = false
+  }
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.0.payout_amount", "0"),
+					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.0.revenue_amount", "0"),
+				),
+			},
+		},
+	})
+}
+
 // offerRecord is the in-memory fake Everflow's view of a single offer.
 // Extra holds any nested objects (ruleset, traffic_filters, creatives,
 // labels, ...) the typed schema does not model so the fake can round-
