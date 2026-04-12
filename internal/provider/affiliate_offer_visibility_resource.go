@@ -166,6 +166,9 @@ func (r *AffiliateOfferVisibilityResource) Delete(ctx context.Context, req resou
 
 	err := r.client.SetAffiliateOfferVisibility(ctx, affiliateID, []int64{offerID}, "hidden")
 	if err != nil {
+		if everflow.IsNotFound(err) {
+			return // Already gone — nothing to revoke.
+		}
 		resp.Diagnostics.AddError("Failed to revoke affiliate offer visibility", err.Error())
 		return
 	}

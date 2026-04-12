@@ -109,6 +109,42 @@ resource "everflow_affiliate_offer_visibility" "test" {
 	})
 }
 
+// TestAffiliateOfferVisibilityResource_Delete404IsNoop verifies that if
+// the offer (or affiliate) is deleted out-of-band before terraform
+// destroy, the PATCH 404 is swallowed and the destroy succeeds.
+func TestAffiliateOfferVisibilityResource_Delete404IsNoop(t *testing.T) {
+	t.Parallel()
+
+	srv, state := newVisibilityTestServer(t)
+	defer srv.Close()
+
+	cfg := testProviderConfig(srv) + `
+resource "everflow_affiliate_offer_visibility" "test" {
+  network_affiliate_id = 7
+  network_offer_id     = 67
+}
+`
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		Steps: []resource.TestStep{
+			{Config: cfg},
+			{
+				// Make both the GET (Read) and PATCH (Delete)
+				// return 404 before the destroy step runs.
+				PreConfig: func() {
+					state.mu.Lock()
+					state.force404 = true
+					state.forcePatch404 = true
+					state.mu.Unlock()
+				},
+				Config:  cfg,
+				Destroy: true,
+			},
+		},
+	})
+}
+
 // TestAffiliateOfferVisibilityResource_Read404RemovesFromState simulates
 // the offer being deleted out-of-band: GET /offers/{id}/visibility returns
 // 404, and the resource is removed from state.
@@ -252,6 +288,7 @@ type visibilityServerState struct {
 	visibleIDs    []int64
 	lastPatchBody map[string]any
 	force404      bool
+	forcePatch404 bool
 	forceHidden   bool
 }
 
@@ -273,6 +310,12 @@ func newVisibilityTestServer(t *testing.T) (*httptest.Server, *visibilityServerS
 
 		if r.Method != http.MethodPatch {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if state.forcePatch404 {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"Error":"not found"}`))
 			return
 		}
 
