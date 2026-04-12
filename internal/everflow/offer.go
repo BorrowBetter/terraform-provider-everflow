@@ -5,6 +5,7 @@ package everflow
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -64,6 +65,43 @@ type Offer struct {
 	PayoutRevenue           []PayoutRevenueEntry `json:"payout_revenue,omitempty"`
 	TimeCreated             int64                `json:"time_created,omitempty"`
 	TimeSaved               int64                `json:"time_saved,omitempty"`
+}
+
+// UnmarshalJSON implements custom decoding so Offer can absorb both the
+// top-level `payout_revenue` shape (used by POST/PUT request bodies) and
+// the nested `relationship.payout_revenue.entries` shape that Everflow's
+// GET responses return.
+//
+// Everflow's API is asymmetric: when you POST or PUT an offer, the request
+// body takes `payout_revenue` at the top level as a plain array. When you
+// GET the same offer, the response wraps it under a `relationship` object
+// as `relationship.payout_revenue.entries`. A naive decoder keyed on the
+// top-level field alone silently drops the payouts on Read, which in turn
+// breaks `terraform import` for offers because the imported state has an
+// empty `payout_revenue` slice.
+//
+// The two shapes are treated as a union: if the top-level key is present,
+// it wins; otherwise the decoder falls back to the nested entries. This
+// keeps the client layer honest about both the request and response
+// contracts Everflow actually uses.
+func (o *Offer) UnmarshalJSON(data []byte) error {
+	// Alias prevents the decoder from recursing into this method.
+	type alias Offer
+	aux := struct {
+		*alias
+		Relationship *struct {
+			PayoutRevenue *struct {
+				Entries []PayoutRevenueEntry `json:"entries"`
+			} `json:"payout_revenue"`
+		} `json:"relationship"`
+	}{alias: (*alias)(o)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if len(o.PayoutRevenue) == 0 && aux.Relationship != nil && aux.Relationship.PayoutRevenue != nil {
+		o.PayoutRevenue = aux.Relationship.PayoutRevenue.Entries
+	}
+	return nil
 }
 
 // CreateOfferInput is the request body sent to POST /v1/networks/offers.
