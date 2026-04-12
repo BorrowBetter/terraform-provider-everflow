@@ -85,14 +85,7 @@ func TestAffiliateResource_CreateReadUpdateDelete(t *testing.T) {
 		NetworkEmployeeID: 11,
 		DefaultCurrencyID: "USD",
 		InternalNotes:     "",
-		// An unmodeled nested object the Terraform schema does not expose.
-		// The fetch-modify-put Update path must preserve this field.
-		Extra: map[string]any{
-			"billing": map[string]any{
-				"payment_type":          "wire",
-				"default_payment_terms": float64(30),
-			},
-		},
+		Extra:             map[string]any{},
 	})
 	defer srv.Close()
 
@@ -107,6 +100,12 @@ resource "everflow_affiliate" "test" {
   account_status      = "active"
   network_employee_id = 11
   default_currency_id = "USD"
+
+  billing = {
+    billing_frequency = "monthly"
+    payment_type      = "none"
+    day_of_month      = 1
+  }
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -114,11 +113,43 @@ resource "everflow_affiliate" "test" {
 					resource.TestCheckResourceAttr("everflow_affiliate.test", "network_affiliate_id", "42"),
 					resource.TestCheckResourceAttr("everflow_affiliate.test", "network_id", "1"),
 					resource.TestCheckResourceAttr("everflow_affiliate.test", "account_status", "active"),
+					resource.TestCheckResourceAttr("everflow_affiliate.test", "billing.billing_frequency", "monthly"),
+					resource.TestCheckResourceAttr("everflow_affiliate.test", "billing.payment_type", "none"),
+					resource.TestCheckResourceAttr("everflow_affiliate.test", "billing.day_of_month", "1"),
+					func(_ *terraform.State) error {
+						state.mu.Lock()
+						defer state.mu.Unlock()
+						if state.lastPostBody == nil {
+							return fmt.Errorf("expected a POST on Create, got none")
+						}
+						billing, ok := state.lastPostBody["billing"].(map[string]any)
+						if !ok {
+							return fmt.Errorf("POST body missing billing object: %v", state.lastPostBody["billing"])
+						}
+						if billing["billing_frequency"] != "monthly" {
+							return fmt.Errorf("POST body billing.billing_frequency = %v, want monthly", billing["billing_frequency"])
+						}
+						if billing["payment_type"] != "none" {
+							return fmt.Errorf("POST body billing.payment_type = %v, want none", billing["payment_type"])
+						}
+						return nil
+					},
 				),
 			},
-			// Update — rename + add internal_notes. The server must receive
-			// a PUT that includes the unmodeled billing object.
+			// Update — rename + add internal_notes. Inject an unmodeled
+			// billing sub-field (default_payment_terms) to simulate an
+			// out-of-band UI edit, then verify fetch-modify-put preserves it.
 			{
+				PreConfig: func() {
+					state.mu.Lock()
+					defer state.mu.Unlock()
+					billing, ok := state.record.Extra["billing"].(map[string]any)
+					if !ok {
+						billing = map[string]any{}
+					}
+					billing["default_payment_terms"] = float64(30)
+					state.record.Extra["billing"] = billing
+				},
 				Config: testProviderConfig(srv) + `
 resource "everflow_affiliate" "test" {
   name                = "Acme Renamed"
@@ -126,6 +157,12 @@ resource "everflow_affiliate" "test" {
   network_employee_id = 11
   default_currency_id = "USD"
   internal_notes      = "Managed by Terraform"
+
+  billing = {
+    billing_frequency = "monthly"
+    payment_type      = "none"
+    day_of_month      = 1
+  }
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -137,15 +174,21 @@ resource "everflow_affiliate" "test" {
 						if state.lastPutBody == nil {
 							return fmt.Errorf("expected a PUT on Update, got none")
 						}
-						// The PUT body must contain the unmodeled
-						// billing object — this is the fetch-modify-put
-						// preservation contract.
 						billing, ok := state.lastPutBody["billing"].(map[string]any)
 						if !ok {
-							return fmt.Errorf("PUT body missing preserved billing object: %v", state.lastPutBody["billing"])
+							return fmt.Errorf("PUT body missing billing object: %v", state.lastPutBody["billing"])
 						}
-						if billing["payment_type"] != "wire" {
-							return fmt.Errorf("PUT body billing.payment_type = %v, want wire", billing["payment_type"])
+						// Schema-managed billing fields must be present.
+						if billing["billing_frequency"] != "monthly" {
+							return fmt.Errorf("PUT body billing.billing_frequency = %v, want monthly", billing["billing_frequency"])
+						}
+						if billing["payment_type"] != "none" {
+							return fmt.Errorf("PUT body billing.payment_type = %v, want none", billing["payment_type"])
+						}
+						// Unmodeled billing sub-field must survive the
+						// fetch-modify-put round trip.
+						if billing["default_payment_terms"] != float64(30) {
+							return fmt.Errorf("PUT body billing.default_payment_terms = %v, want 30 (unmodeled sub-field must survive)", billing["default_payment_terms"])
 						}
 						if state.lastPutBody["internal_notes"] != "Managed by Terraform" {
 							return fmt.Errorf("PUT body internal_notes = %v, want 'Managed by Terraform'", state.lastPutBody["internal_notes"])
@@ -153,17 +196,14 @@ resource "everflow_affiliate" "test" {
 						if state.lastPutBody["name"] != "Acme Renamed" {
 							return fmt.Errorf("PUT body name = %v, want 'Acme Renamed'", state.lastPutBody["name"])
 						}
-						// After the PUT, the fake server's stored copy
-						// of the record must still include the billing
-						// object — this proves the preservation round-
-						// tripped, not just that the resource echoed it
-						// back in one direction.
+						// The stored record must still include the
+						// unmodeled sub-field after the round trip.
 						storedBilling, ok := state.record.Extra["billing"].(map[string]any)
 						if !ok {
 							return fmt.Errorf("stored record missing billing after Update: extras=%v", state.record.Extra)
 						}
-						if storedBilling["payment_type"] != "wire" {
-							return fmt.Errorf("stored billing.payment_type = %v, want wire", storedBilling["payment_type"])
+						if storedBilling["default_payment_terms"] != float64(30) {
+							return fmt.Errorf("stored billing.default_payment_terms = %v, want 30", storedBilling["default_payment_terms"])
 						}
 						return nil
 					},
@@ -439,6 +479,71 @@ resource "everflow_affiliate" "test" {
 	}
 }
 
+// TestAffiliateResource_BillingDefaultsWhenOmitted verifies that when the
+// user omits the billing block entirely from HCL, the resource injects
+// sensible defaults (monthly, none, day 1) and includes them in the POST
+// body. This is the fix for #13 — without billing in the POST body,
+// Everflow returns 400.
+func TestAffiliateResource_BillingDefaultsWhenOmitted(t *testing.T) {
+	t.Parallel()
+
+	srv, state := newAffiliateTestServer(t, &affiliateRecord{
+		ID:                42,
+		NetworkID:         1,
+		Name:              "Acme Affiliate",
+		AccountStatus:     "active",
+		NetworkEmployeeID: 11,
+		DefaultCurrencyID: "USD",
+	})
+	defer srv.Close()
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		Steps: []resource.TestStep{
+			{
+				Config: testProviderConfig(srv) + `
+resource "everflow_affiliate" "test" {
+  name                = "Acme Affiliate"
+  account_status      = "active"
+  network_employee_id = 11
+  default_currency_id = "USD"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("everflow_affiliate.test", "billing.billing_frequency", "monthly"),
+					resource.TestCheckResourceAttr("everflow_affiliate.test", "billing.payment_type", "none"),
+					resource.TestCheckResourceAttr("everflow_affiliate.test", "billing.day_of_month", "1"),
+					func(_ *terraform.State) error {
+						state.mu.Lock()
+						defer state.mu.Unlock()
+						if state.lastPostBody == nil {
+							return fmt.Errorf("expected a POST on Create, got none")
+						}
+						billing, ok := state.lastPostBody["billing"].(map[string]any)
+						if !ok {
+							return fmt.Errorf("POST body missing billing even though defaults should inject it: %v", state.lastPostBody["billing"])
+						}
+						if billing["billing_frequency"] != "monthly" {
+							return fmt.Errorf("POST body billing.billing_frequency = %v, want monthly (default)", billing["billing_frequency"])
+						}
+						if billing["payment_type"] != "none" {
+							return fmt.Errorf("POST body billing.payment_type = %v, want none (default)", billing["payment_type"])
+						}
+						details, ok := billing["details"].(map[string]any)
+						if !ok {
+							return fmt.Errorf("POST body billing.details missing: %v", billing["details"])
+						}
+						if details["day_of_month"] != float64(1) {
+							return fmt.Errorf("POST body billing.details.day_of_month = %v, want 1 (default)", details["day_of_month"])
+						}
+						return nil
+					},
+				),
+			},
+		},
+	})
+}
+
 // affiliateRecord is the in-memory fake Everflow's view of a single
 // affiliate. Extra holds any nested objects (billing, contact_address,
 // users, labels, ...) the typed schema does not model so the fake can
@@ -460,6 +565,7 @@ type affiliateRecord struct {
 type affiliateServerState struct {
 	mu           sync.Mutex
 	record       *affiliateRecord
+	lastPostBody map[string]any
 	lastPutBody  map[string]any
 	deleteCalled bool
 	force404     bool
@@ -497,6 +603,7 @@ func newAffiliateTestServer(t *testing.T, seed *affiliateRecord) (*httptest.Serv
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			state.lastPostBody = body
 			// Populate the server record from the POST body. Absent fields
 			// stay at their seed values, which matches the real API's "PUT
 			// replaces, POST creates" asymmetry closely enough for tests.
@@ -505,6 +612,20 @@ func newAffiliateTestServer(t *testing.T, seed *affiliateRecord) (*httptest.Serv
 			state.record.NetworkEmployeeID = int64FromMap(body, "network_employee_id")
 			state.record.DefaultCurrencyID = stringFromMap(body, "default_currency_id")
 			state.record.InternalNotes = stringFromMap(body, "internal_notes")
+			// Capture unknown fields (billing, labels, etc.) into
+			// Extra so GET responses reflect what the resource sent.
+			if state.record.Extra == nil {
+				state.record.Extra = map[string]any{}
+			}
+			for k, v := range body {
+				switch k {
+				case "network_affiliate_id", "network_id", "name", "account_status",
+					"network_employee_id", "default_currency_id",
+					"internal_notes", "time_created", "time_saved":
+					continue
+				}
+				state.record.Extra[k] = v
+			}
 			writeAffiliateRecord(w, state.record)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -578,6 +699,16 @@ func writeAffiliateRecord(w http.ResponseWriter, rec *affiliateRecord) {
 	}
 	for k, v := range rec.Extra {
 		out[k] = v
+	}
+	// Ensure a billing object is always present in responses — the
+	// typed Affiliate struct expects it. If Extra didn't set one,
+	// provide a minimal default matching Everflow's UI behavior.
+	if _, ok := out["billing"]; !ok {
+		out["billing"] = map[string]any{
+			"billing_frequency": "monthly",
+			"payment_type":      "none",
+			"details":           map[string]any{"day_of_month": float64(1)},
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
