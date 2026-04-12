@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -239,12 +240,20 @@ func (r *OfferResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 							},
 						},
 						"payout_amount": schema.Float64Attribute{
-							MarkdownDescription: "Fixed payout amount in the offer's `currency_id`. Not required when `payout_type` is `cps` or `prv`.",
+							MarkdownDescription: "Fixed payout amount in the offer's `currency_id`. Not required when `payout_type` is `cps` or `prv`. Defaults to `0` server-side when omitted.",
 							Optional:            true,
+							Computed:            true,
+							PlanModifiers: []planmodifier.Float64{
+								float64planmodifier.UseStateForUnknown(),
+							},
 						},
 						"payout_percentage": schema.Int64Attribute{
-							MarkdownDescription: "Payout percentage (0-100). Only meaningful when `payout_type` is `cps`, `cpa_cps`, or `prv`.",
+							MarkdownDescription: "Payout percentage (0-100). Only meaningful when `payout_type` is `cps`, `cpa_cps`, or `prv`. Defaults to `0` server-side when omitted.",
 							Optional:            true,
+							Computed:            true,
+							PlanModifiers: []planmodifier.Int64{
+								int64planmodifier.UseStateForUnknown(),
+							},
 						},
 						"revenue_type": schema.StringAttribute{
 							MarkdownDescription: "Revenue model. One of `rpc`, `rpa`, `rpm`, `rps`, `rpa_rps`, or `null_value`. Use `null_value` for entries that track payout-only events without revenue, analogous to `payout_type = null_value`.",
@@ -254,12 +263,20 @@ func (r *OfferResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 							},
 						},
 						"revenue_amount": schema.Float64Attribute{
-							MarkdownDescription: "Fixed revenue amount in the offer's `currency_id`. Not required when `revenue_type` is `rps`.",
+							MarkdownDescription: "Fixed revenue amount in the offer's `currency_id`. Not required when `revenue_type` is `rps`. Defaults to `0` server-side when omitted.",
 							Optional:            true,
+							Computed:            true,
+							PlanModifiers: []planmodifier.Float64{
+								float64planmodifier.UseStateForUnknown(),
+							},
 						},
 						"revenue_percentage": schema.Int64Attribute{
-							MarkdownDescription: "Revenue percentage (0-100). Only meaningful when `revenue_type` is `rps` or `rpa_rps`.",
+							MarkdownDescription: "Revenue percentage (0-100). Only meaningful when `revenue_type` is `rps` or `rpa_rps`. Defaults to `0` server-side when omitted.",
 							Optional:            true,
+							Computed:            true,
+							PlanModifiers: []planmodifier.Int64{
+								int64planmodifier.UseStateForUnknown(),
+							},
 						},
 						"is_default": schema.BoolAttribute{
 							MarkdownDescription: "Whether this entry is the default payout/revenue for the offer. Exactly one entry must be `true`.",
@@ -612,26 +629,10 @@ func payoutRevenueClientToModels(in []everflow.PayoutRevenueEntry) []PayoutReven
 		} else {
 			m.EntryName = types.StringValue(e.EntryName)
 		}
-		if e.PayoutAmount == 0 {
-			m.PayoutAmount = types.Float64Null()
-		} else {
-			m.PayoutAmount = types.Float64Value(e.PayoutAmount)
-		}
-		if e.PayoutPercentage == 0 {
-			m.PayoutPercentage = types.Int64Null()
-		} else {
-			m.PayoutPercentage = types.Int64Value(e.PayoutPercentage)
-		}
-		if e.RevenueAmount == 0 {
-			m.RevenueAmount = types.Float64Null()
-		} else {
-			m.RevenueAmount = types.Float64Value(e.RevenueAmount)
-		}
-		if e.RevenuePercentage == 0 {
-			m.RevenuePercentage = types.Int64Null()
-		} else {
-			m.RevenuePercentage = types.Int64Value(e.RevenuePercentage)
-		}
+		m.PayoutAmount = types.Float64Value(e.PayoutAmount)
+		m.PayoutPercentage = types.Int64Value(e.PayoutPercentage)
+		m.RevenueAmount = types.Float64Value(e.RevenueAmount)
+		m.RevenuePercentage = types.Int64Value(e.RevenuePercentage)
 		out[i] = m
 	}
 	return out
