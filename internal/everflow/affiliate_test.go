@@ -50,8 +50,10 @@ func TestCreateAffiliate_PostsExpectedBody(t *testing.T) {
 		DefaultCurrencyID: "USD",
 		InternalNotes:     "hello",
 		Billing: Billing{
+			Inner:            map[string]any{},
 			BillingFrequency: "monthly",
 			PaymentType:      "none",
+			TaxID:            "",
 			Details:          BillingDetails{DayOfMonth: 1},
 		},
 	})
@@ -97,6 +99,19 @@ func TestCreateAffiliate_PostsExpectedBody(t *testing.T) {
 	if billing["payment_type"] != "none" {
 		t.Errorf("body.billing.payment_type = %v, want none", billing["payment_type"])
 	}
+	// Inner "billing" key is required by the Everflow API — omitting it
+	// causes 400 "Invalid parameters" on affiliate writes (#22).
+	innerBilling, ok := billing["billing"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.billing.billing (inner key) missing or not an object: %v", billing["billing"])
+	}
+	if len(innerBilling) != 0 {
+		t.Errorf("body.billing.billing should be empty object, got %v", innerBilling)
+	}
+	// tax_id is also required — same root cause as #22.
+	if billing["tax_id"] != "" {
+		t.Errorf("body.billing.tax_id = %v, want empty string", billing["tax_id"])
+	}
 	details, ok := billing["details"].(map[string]any)
 	if !ok {
 		t.Fatalf("body.billing.details missing or not an object: %v", billing["details"])
@@ -131,11 +146,7 @@ func TestCreateAffiliate_OmitsInternalNotesWhenEmpty(t *testing.T) {
 		AccountStatus:     "active",
 		NetworkEmployeeID: 1,
 		DefaultCurrencyID: "USD",
-		Billing: Billing{
-			BillingFrequency: "monthly",
-			PaymentType:      "none",
-			Details:          BillingDetails{DayOfMonth: 1},
-		},
+		Billing:           DefaultBilling(),
 	})
 	if err != nil {
 		t.Fatalf("CreateAffiliate returned error: %v", err)
