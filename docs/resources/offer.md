@@ -102,6 +102,9 @@ Required:
 Optional:
 
 - `entry_name` (String) Human-readable name for this payout/revenue entry. Defaults to `Base` server-side when omitted.
+- `global_advertiser_event_id` (Number) Links this entry to a global advertiser event (e.g. a "Revenue" event defined at the account level). `0` means no link. Defaults to `0` server-side when omitted.
+- `is_allow_duplicate_conversion` (Boolean) When `true`, multiple conversions are allowed per click for this event. Defaults to `false` server-side when omitted.
+- `is_postback_disabled` (Boolean) When `true`, no postback fires to the affiliate for this event. Defaults to `false` server-side when omitted.
 - `payout_amount` (Number) Fixed payout amount in the offer's `currency_id`. Not required when `payout_type` is `cps` or `prv`. Defaults to `0` server-side when omitted.
 - `payout_percentage` (Number) Payout percentage (0-100). Only meaningful when `payout_type` is `cps`, `cpa_cps`, or `prv`. Defaults to `0` server-side when omitted.
 - `revenue_amount` (Number) Fixed revenue amount in the offer's `currency_id`. Not required when `revenue_type` is `rps`. Defaults to `0` server-side when omitted.
