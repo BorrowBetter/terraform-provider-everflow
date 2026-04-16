@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -73,15 +74,18 @@ type OfferResourceModel struct {
 // distinguished in the plan. The required bool flags use the native Go
 // type because the framework always supplies a value at plan time.
 type PayoutRevenueModel struct {
-	EntryName         types.String  `tfsdk:"entry_name"`
-	PayoutType        types.String  `tfsdk:"payout_type"`
-	PayoutAmount      types.Float64 `tfsdk:"payout_amount"`
-	PayoutPercentage  types.Int64   `tfsdk:"payout_percentage"`
-	RevenueType       types.String  `tfsdk:"revenue_type"`
-	RevenueAmount     types.Float64 `tfsdk:"revenue_amount"`
-	RevenuePercentage types.Int64   `tfsdk:"revenue_percentage"`
-	IsDefault         types.Bool    `tfsdk:"is_default"`
-	IsPrivate         types.Bool    `tfsdk:"is_private"`
+	EntryName                  types.String  `tfsdk:"entry_name"`
+	PayoutType                 types.String  `tfsdk:"payout_type"`
+	PayoutAmount               types.Float64 `tfsdk:"payout_amount"`
+	PayoutPercentage           types.Int64   `tfsdk:"payout_percentage"`
+	RevenueType                types.String  `tfsdk:"revenue_type"`
+	RevenueAmount              types.Float64 `tfsdk:"revenue_amount"`
+	RevenuePercentage          types.Int64   `tfsdk:"revenue_percentage"`
+	IsDefault                  types.Bool    `tfsdk:"is_default"`
+	IsPrivate                  types.Bool    `tfsdk:"is_private"`
+	IsPostbackDisabled         types.Bool    `tfsdk:"is_postback_disabled"`
+	IsAllowDuplicateConversion types.Bool    `tfsdk:"is_allow_duplicate_conversion"`
+	GlobalAdvertiserEventID    types.Int64   `tfsdk:"global_advertiser_event_id"`
 }
 
 // Metadata sets the fully-qualified resource type name (e.g. everflow_offer).
@@ -285,6 +289,30 @@ func (r *OfferResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 						"is_private": schema.BoolAttribute{
 							MarkdownDescription: "Whether this entry is private (shown only to affiliates it's explicitly granted to).",
 							Required:            true,
+						},
+						"is_postback_disabled": schema.BoolAttribute{
+							MarkdownDescription: "When `true`, no postback fires to the affiliate for this event. Defaults to `false` server-side when omitted.",
+							Optional:            true,
+							Computed:            true,
+							PlanModifiers: []planmodifier.Bool{
+								boolplanmodifier.UseStateForUnknown(),
+							},
+						},
+						"is_allow_duplicate_conversion": schema.BoolAttribute{
+							MarkdownDescription: "When `true`, multiple conversions are allowed per click for this event. Defaults to `false` server-side when omitted.",
+							Optional:            true,
+							Computed:            true,
+							PlanModifiers: []planmodifier.Bool{
+								boolplanmodifier.UseStateForUnknown(),
+							},
+						},
+						"global_advertiser_event_id": schema.Int64Attribute{
+							MarkdownDescription: "Links this entry to a global advertiser event (e.g. a \"Revenue\" event defined at the account level). `0` means no link. Defaults to `0` server-side when omitted.",
+							Optional:            true,
+							Computed:            true,
+							PlanModifiers: []planmodifier.Int64{
+								int64planmodifier.UseStateForUnknown(),
+							},
 						},
 					},
 				},
@@ -559,15 +587,18 @@ func payoutRevenueModelsToClient(in []PayoutRevenueModel) []everflow.PayoutReven
 	out := make([]everflow.PayoutRevenueEntry, len(in))
 	for i, e := range in {
 		out[i] = everflow.PayoutRevenueEntry{
-			EntryName:         e.EntryName.ValueString(),
-			PayoutType:        e.PayoutType.ValueString(),
-			PayoutAmount:      e.PayoutAmount.ValueFloat64(),
-			PayoutPercentage:  e.PayoutPercentage.ValueInt64(),
-			RevenueType:       e.RevenueType.ValueString(),
-			RevenueAmount:     e.RevenueAmount.ValueFloat64(),
-			RevenuePercentage: e.RevenuePercentage.ValueInt64(),
-			IsDefault:         e.IsDefault.ValueBool(),
-			IsPrivate:         e.IsPrivate.ValueBool(),
+			EntryName:                  e.EntryName.ValueString(),
+			PayoutType:                 e.PayoutType.ValueString(),
+			PayoutAmount:               e.PayoutAmount.ValueFloat64(),
+			PayoutPercentage:           e.PayoutPercentage.ValueInt64(),
+			RevenueType:                e.RevenueType.ValueString(),
+			RevenueAmount:              e.RevenueAmount.ValueFloat64(),
+			RevenuePercentage:          e.RevenuePercentage.ValueInt64(),
+			IsDefault:                  e.IsDefault.ValueBool(),
+			IsPrivate:                  e.IsPrivate.ValueBool(),
+			IsPostbackDisabled:         e.IsPostbackDisabled.ValueBool(),
+			IsAllowDuplicateConversion: e.IsAllowDuplicateConversion.ValueBool(),
+			GlobalAdvertiserEventID:    e.GlobalAdvertiserEventID.ValueInt64(),
 		}
 	}
 	return out
@@ -604,6 +635,15 @@ func payoutRevenueModelsToMap(in []PayoutRevenueModel) []map[string]any {
 		if !e.RevenuePercentage.IsNull() && !e.RevenuePercentage.IsUnknown() {
 			entry["revenue_percentage"] = e.RevenuePercentage.ValueInt64()
 		}
+		if !e.IsPostbackDisabled.IsNull() && !e.IsPostbackDisabled.IsUnknown() {
+			entry["is_postback_disabled"] = e.IsPostbackDisabled.ValueBool()
+		}
+		if !e.IsAllowDuplicateConversion.IsNull() && !e.IsAllowDuplicateConversion.IsUnknown() {
+			entry["is_allow_duplicate_conversion"] = e.IsAllowDuplicateConversion.ValueBool()
+		}
+		if !e.GlobalAdvertiserEventID.IsNull() && !e.GlobalAdvertiserEventID.IsUnknown() {
+			entry["global_advertiser_event_id"] = e.GlobalAdvertiserEventID.ValueInt64()
+		}
 		out[i] = entry
 	}
 	return out
@@ -633,6 +673,9 @@ func payoutRevenueClientToModels(in []everflow.PayoutRevenueEntry) []PayoutReven
 		m.PayoutPercentage = types.Int64Value(e.PayoutPercentage)
 		m.RevenueAmount = types.Float64Value(e.RevenueAmount)
 		m.RevenuePercentage = types.Int64Value(e.RevenuePercentage)
+		m.IsPostbackDisabled = types.BoolValue(e.IsPostbackDisabled)
+		m.IsAllowDuplicateConversion = types.BoolValue(e.IsAllowDuplicateConversion)
+		m.GlobalAdvertiserEventID = types.Int64Value(e.GlobalAdvertiserEventID)
 		out[i] = m
 	}
 	return out

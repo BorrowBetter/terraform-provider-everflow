@@ -337,7 +337,10 @@ func TestGetOffer_DecodesNestedPayoutRevenue(t *testing.T) {
 							"revenue_type": "rps",
 							"revenue_percentage": 100,
 							"is_default": false,
-							"is_private": true
+							"is_private": true,
+							"is_postback_disabled": true,
+							"is_allow_duplicate_conversion": true,
+							"global_advertiser_event_id": 2
 						}
 					]
 				}
@@ -360,6 +363,15 @@ func TestGetOffer_DecodesNestedPayoutRevenue(t *testing.T) {
 	}
 	if got.PayoutRevenue[1].PayoutType != "null_value" || got.PayoutRevenue[1].IsDefault {
 		t.Errorf("PayoutRevenue[1] = %+v, want null_value/non-default", got.PayoutRevenue[1])
+	}
+	if !got.PayoutRevenue[1].IsPostbackDisabled {
+		t.Errorf("PayoutRevenue[1].IsPostbackDisabled = false, want true")
+	}
+	if !got.PayoutRevenue[1].IsAllowDuplicateConversion {
+		t.Errorf("PayoutRevenue[1].IsAllowDuplicateConversion = false, want true")
+	}
+	if got.PayoutRevenue[1].GlobalAdvertiserEventID != 2 {
+		t.Errorf("PayoutRevenue[1].GlobalAdvertiserEventID = %d, want 2", got.PayoutRevenue[1].GlobalAdvertiserEventID)
 	}
 }
 
