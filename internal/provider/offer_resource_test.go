@@ -402,13 +402,16 @@ func TestOfferResource_ImportByID(t *testing.T) {
 		NetworkTrackingDomainID: 5,
 		PayoutRevenue: []any{
 			map[string]any{
-				"entry_name":     "Base",
-				"payout_type":    "cpa",
-				"payout_amount":  float64(5),
-				"revenue_type":   "rpa",
-				"revenue_amount": float64(10),
-				"is_default":     true,
-				"is_private":     false,
+				"entry_name":                    "Base",
+				"payout_type":                   "cpa",
+				"payout_amount":                 float64(5),
+				"revenue_type":                  "rpa",
+				"revenue_amount":                float64(10),
+				"is_default":                    true,
+				"is_private":                    false,
+				"is_postback_disabled":          true,
+				"is_allow_duplicate_conversion": true,
+				"global_advertiser_event_id":    float64(3),
 			},
 		},
 	})
@@ -429,13 +432,16 @@ resource "everflow_offer" "imported" {
   network_tracking_domain_id = 5
 
   payout_revenue {
-    entry_name     = "Base"
-    payout_type    = "cpa"
-    payout_amount  = 5.00
-    revenue_type   = "rpa"
-    revenue_amount = 10.00
-    is_default     = true
-    is_private     = false
+    entry_name                    = "Base"
+    payout_type                   = "cpa"
+    payout_amount                 = 5.00
+    revenue_type                  = "rpa"
+    revenue_amount                = 10.00
+    is_default                    = true
+    is_private                    = false
+    is_postback_disabled          = true
+    is_allow_duplicate_conversion = true
+    global_advertiser_event_id    = 3
   }
 }
 `,
@@ -736,12 +742,15 @@ func TestOfferResource_NestedPayoutRevenueRoundTrip(t *testing.T) {
 				"is_private":         false,
 			},
 			map[string]any{
-				"entry_name":         "Revenue Received",
-				"payout_type":        "null_value",
-				"revenue_type":       "rps",
-				"revenue_percentage": float64(100),
-				"is_default":         false,
-				"is_private":         true,
+				"entry_name":                    "Revenue Received",
+				"payout_type":                   "null_value",
+				"revenue_type":                  "rps",
+				"revenue_percentage":            float64(100),
+				"is_default":                    false,
+				"is_private":                    true,
+				"is_postback_disabled":          true,
+				"is_allow_duplicate_conversion": true,
+				"global_advertiser_event_id":    float64(2),
 			},
 		},
 		// Sibling under `relationship` that must survive unchanged.
@@ -775,12 +784,15 @@ resource "everflow_offer" "test" {
   }
 
   payout_revenue {
-    entry_name         = "Revenue Received"
-    payout_type        = "null_value"
-    revenue_type       = "rps"
-    revenue_percentage = 100
-    is_default         = false
-    is_private         = true
+    entry_name                    = "Revenue Received"
+    payout_type                   = "null_value"
+    revenue_type                  = "rps"
+    revenue_percentage            = 100
+    is_default                    = false
+    is_private                    = true
+    is_postback_disabled          = true
+    is_allow_duplicate_conversion = true
+    global_advertiser_event_id    = 2
   }
 }
 `
@@ -797,6 +809,9 @@ resource "everflow_offer" "test" {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.#", "2"),
 					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.1.payout_type", "null_value"),
+					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.1.is_postback_disabled", "true"),
+					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.1.is_allow_duplicate_conversion", "true"),
+					resource.TestCheckResourceAttr("everflow_offer.test", "payout_revenue.1.global_advertiser_event_id", "2"),
 				),
 			},
 			{
@@ -821,12 +836,15 @@ resource "everflow_offer" "test" {
   }
 
   payout_revenue {
-    entry_name         = "Revenue Received"
-    payout_type        = "null_value"
-    revenue_type       = "rps"
-    revenue_percentage = 100
-    is_default         = false
-    is_private         = true
+    entry_name                    = "Revenue Received"
+    payout_type                   = "null_value"
+    revenue_type                  = "rps"
+    revenue_percentage            = 100
+    is_default                    = false
+    is_private                    = true
+    is_postback_disabled          = true
+    is_allow_duplicate_conversion = true
+    global_advertiser_event_id    = 2
   }
 }
 `,
@@ -845,6 +863,15 @@ resource "everflow_offer" "test" {
 					p1, _ := payouts[1].(map[string]any)
 					if p1["payout_type"] != "null_value" {
 						return fmt.Errorf("PUT body payout_revenue[1].payout_type = %v, want null_value", p1["payout_type"])
+					}
+					if p1["is_postback_disabled"] != true {
+						return fmt.Errorf("PUT body payout_revenue[1].is_postback_disabled = %v, want true", p1["is_postback_disabled"])
+					}
+					if p1["is_allow_duplicate_conversion"] != true {
+						return fmt.Errorf("PUT body payout_revenue[1].is_allow_duplicate_conversion = %v, want true", p1["is_allow_duplicate_conversion"])
+					}
+					if floatFromAny(p1["global_advertiser_event_id"]) != 2 {
+						return fmt.Errorf("PUT body payout_revenue[1].global_advertiser_event_id = %v, want 2", p1["global_advertiser_event_id"])
 					}
 					// Relationship wrapper must survive, but its
 					// payout_revenue child must be stripped so the PUT
