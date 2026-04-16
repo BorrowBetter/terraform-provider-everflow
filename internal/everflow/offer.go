@@ -25,15 +25,18 @@ const offersPath = "/v1/networks/offers"
 // so zero-valued optional fields drop out of the wire representation
 // rather than being sent as 0 / "".
 type PayoutRevenueEntry struct {
-	EntryName         string  `json:"entry_name,omitempty"`
-	PayoutType        string  `json:"payout_type"`
-	PayoutAmount      float64 `json:"payout_amount,omitempty"`
-	PayoutPercentage  int64   `json:"payout_percentage,omitempty"`
-	RevenueType       string  `json:"revenue_type"`
-	RevenueAmount     float64 `json:"revenue_amount,omitempty"`
-	RevenuePercentage int64   `json:"revenue_percentage,omitempty"`
-	IsDefault         bool    `json:"is_default"`
-	IsPrivate         bool    `json:"is_private"`
+	EntryName                  string  `json:"entry_name,omitempty"`
+	PayoutType                 string  `json:"payout_type"`
+	PayoutAmount               float64 `json:"payout_amount,omitempty"`
+	PayoutPercentage           int64   `json:"payout_percentage,omitempty"`
+	RevenueType                string  `json:"revenue_type"`
+	RevenueAmount              float64 `json:"revenue_amount,omitempty"`
+	RevenuePercentage          int64   `json:"revenue_percentage,omitempty"`
+	IsDefault                  bool    `json:"is_default"`
+	IsPrivate                  bool    `json:"is_private"`
+	IsPostbackDisabled         bool    `json:"is_postback_disabled,omitempty"`
+	IsAllowDuplicateConversion bool    `json:"is_allow_duplicate_conversion,omitempty"`
+	GlobalAdvertiserEventID    int64   `json:"global_advertiser_event_id,omitempty"`
 }
 
 // Offer is the subset of Everflow's offer resource that the Terraform
