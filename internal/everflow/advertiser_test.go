@@ -52,8 +52,10 @@ func TestCreateAdvertiser_PostsExpectedBody(t *testing.T) {
 		ReportingTimezoneID: 80,
 		InternalNotes:       "hello",
 		Billing: Billing{
+			Inner:            map[string]any{},
 			BillingFrequency: "monthly",
 			PaymentType:      "none",
+			TaxID:            "",
 			Details:          BillingDetails{DayOfMonth: 1},
 		},
 	})
@@ -96,6 +98,17 @@ func TestCreateAdvertiser_PostsExpectedBody(t *testing.T) {
 	}
 	if billing["payment_type"] != "none" {
 		t.Errorf("body.billing.payment_type = %v, want none", billing["payment_type"])
+	}
+	// Inner "billing" key and tax_id are required by the Everflow API (#22).
+	innerBilling, ok := billing["billing"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.billing.billing (inner key) missing or not an object: %v", billing["billing"])
+	}
+	if len(innerBilling) != 0 {
+		t.Errorf("body.billing.billing should be empty object, got %v", innerBilling)
+	}
+	if billing["tax_id"] != "" {
+		t.Errorf("body.billing.tax_id = %v, want empty string", billing["tax_id"])
 	}
 
 	if got.NetworkAdvertiserID != 42 {
