@@ -51,3 +51,33 @@ jobs:
           terraform_wrapper: false
       - run: go mod download
       - run: go test ./... -race -timeout 120s
+
+  # The org ruleset (org-require-ci in BorrowBetter/terraform-github) requires
+  # exactly one status check named `ci` across every repo. Repos do not agree on
+  # what they run, so they agree on the name of the job that reports -- this one
+  # fans in whatever runs above, and jobs can be added or split without touching
+  # the ruleset.
+  #
+  # It lives here rather than in a separate ci.yml because `needs:` only
+  # resolves within a single workflow; a standalone file would have to duplicate
+  # Build and Unit tests to fan in on them.
+  #
+  # `if: always()` is load-bearing. Without it this job is SKIPPED when a
+  # dependency fails, and a skipped check does not fail a required status check
+  # -- the gate would go green exactly when the build or tests broke.
+  #
+  # The condition deliberately ignores `skipped`, which is safe only because
+  # every job in `needs` runs unconditionally. `test` is skipped when `build`
+  # fails, but `build` is also in `needs`, so that path still reports failure.
+  # Give either job an `if:` or a path filter and add 'skipped' here too.
+  ci:
+    # Explicit, even though it matches the job id -- this string is the org
+    # ruleset's required context, so it must not silently follow a rename.
+    name: ci
+    needs: [build, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate on upstream jobs
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
