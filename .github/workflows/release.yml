@@ -22,13 +22,14 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write # goreleaser uploads artifacts to the GitHub release
-  id-token: write # mandatory for the OIDC token request
+permissions: {}
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # goreleaser uploads artifacts to the GitHub release
+      id-token: write # mandatory for the OIDC token request
     steps:
       - uses: actions/checkout@v5
 
